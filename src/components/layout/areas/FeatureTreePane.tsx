@@ -75,6 +75,8 @@ const systemDeps = {
   sceneEntitiesManager,
   rustContext,
 }
+import type { VisibilityToggleProps } from '@src/components/VisibilityToggle'
+import { VisibilityToggle } from '@src/components/VisibilityToggle'
 
 export function FeatureTreePane(props: AreaTypeComponentProps) {
   return (
@@ -319,37 +321,6 @@ export const FeatureTreePaneContents = memo(() => {
     </div>
   )
 })
-
-interface VisibilityToggleProps {
-  visible: boolean
-  onVisibilityChange: () => unknown
-}
-
-/**
- * A button that toggles the visibility of an entity
- * tied to an artifact in the feature tree.
- * For now just used for default planes.
- */
-const VisibilityToggle = (props: VisibilityToggleProps) => {
-  const visible = props.visible
-  const handleToggleVisible = useCallback(() => {
-    props.onVisibilityChange()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- TODO: blanket-ignored fix me!
-  }, [props.onVisibilityChange])
-
-  return (
-    <button
-      onClick={handleToggleVisible}
-      className="p-0 m-0 border-transparent dark:border-transparent"
-      data-testid="feature-tree-visibility-toggle"
-    >
-      <CustomIcon
-        name={visible ? 'eyeOpen' : 'eyeCrossedOut'}
-        className="w-6 h-6"
-      />
-    </button>
-  )
-}
 
 /**
  * A grouping of operation items into a disclosure (or dropdown)
