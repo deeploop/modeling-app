@@ -78,6 +78,14 @@ const systemDeps = {
 import type { VisibilityToggleProps } from '@src/components/VisibilityToggle'
 import { VisibilityToggle } from '@src/components/VisibilityToggle'
 
+// Defined outside of React to prevent rerenders
+// TODO: get all system dependencies into React via global context
+const systemDeps = {
+  sceneInfra,
+  sceneEntitiesManager,
+  rustContext,
+}
+
 export function FeatureTreePane(props: AreaTypeComponentProps) {
   return (
     <LayoutPanel
