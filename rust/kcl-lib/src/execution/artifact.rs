@@ -595,6 +595,7 @@ impl Helix {
         };
         merge_opt_id(&mut self.axis_id, new.axis_id);
         merge_opt_id(&mut self.sweep_id_trajectory, new.sweep_id_trajectory);
+        self.consumed = new.consumed;
 
         None
     }
@@ -1133,17 +1134,20 @@ fn artifacts_to_update(
                 code_ref,
                 trajectory_id: Some(trajectory),
                 method,
+                consumed: false,
             }));
             let path = artifacts.get(&target);
             if let Some(Artifact::Path(path)) = path {
                 let mut new_path = path.clone();
                 new_path.sweep_id = Some(id);
+                new_path.consumed = true;
                 return_arr.push(Artifact::Path(new_path));
                 if let Some(inner_path_id) = path.inner_path_id
                     && let Some(inner_path_artifact) = artifacts.get(&inner_path_id)
                     && let Artifact::Path(mut inner_path_artifact) = inner_path_artifact.clone()
                 {
                     inner_path_artifact.sweep_id = Some(id);
+                    inner_path_artifact.consumed = true;
                     return_arr.push(Artifact::Path(inner_path_artifact))
                 }
             }
@@ -1152,11 +1156,13 @@ fn artifacts_to_update(
                     Artifact::Path(path) => {
                         let mut new_path = path.clone();
                         new_path.sweep_id_trajectory = Some(id);
+                        new_path.consumed = true;
                         return_arr.push(Artifact::Path(new_path));
                     }
                     Artifact::Helix(helix) => {
                         let mut new_helix = helix.clone();
                         new_helix.sweep_id_trajectory = Some(id);
+                        new_helix.consumed = true;
                         return_arr.push(Artifact::Helix(new_helix));
                     }
                     _ => {}
@@ -1481,6 +1487,7 @@ fn artifacts_to_update(
                 axis_id: Some(cylinder_id),
                 code_ref,
                 sweep_id_trajectory: None,
+                consumed: false,
             })];
             return Ok(return_arr);
         }
