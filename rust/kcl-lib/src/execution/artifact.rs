@@ -1628,6 +1628,7 @@ fn artifacts_to_update(
                             }
                             Artifact::Path(path) => {
                                 let mut new_path = path.clone();
+                                new_path.consumed = true;
                                 new_path.composite_solid_id = Some(*solid_id);
 
                                 // We want to mark any sweeps of the path used in this operation
@@ -1659,6 +1660,7 @@ fn artifacts_to_update(
                             }
                             Artifact::Path(path) => {
                                 let mut new_path = path.clone();
+                                new_path.consumed = true;
                                 new_path.composite_solid_id = Some(*solid_id);
 
                                 // We want to mark any sweeps of the path used in this operation
