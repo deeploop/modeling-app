@@ -66,22 +66,13 @@ import { FeatureTreeMenu } from '@src/components/layout/areas/FeatureTreeMenu'
 import Tooltip from '@src/components/Tooltip'
 import { Disclosure } from '@headlessui/react'
 import { toUtf16 } from '@src/lang/errors'
+import type { VisibilityToggleProps } from '@src/components/VisibilityToggle'
+import { VisibilityToggle } from '@src/components/VisibilityToggle'
 
 // Defined outside of React to prevent rerenders
 // TODO: get all system dependencies into React via global context
 const systemDeps = {
   kclManager,
-  sceneInfra,
-  sceneEntitiesManager,
-  rustContext,
-}
-import type { VisibilityToggleProps } from '@src/components/VisibilityToggle'
-import { VisibilityToggle } from '@src/components/VisibilityToggle'
-import { toUtf16 } from '@src/lang/errors'
-
-// Defined outside of React to prevent rerenders
-// TODO: get all system dependencies into React via global context
-const systemDeps = {
   sceneInfra,
   sceneEntitiesManager,
   rustContext,
