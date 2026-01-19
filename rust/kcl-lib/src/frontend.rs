@@ -727,22 +727,7 @@ impl FrontendState {
         // Create updated KCL source from args.
         let start_ast = to_ast_point2d(&ctor.start).map_err(|err| Error { msg: err.to_string() })?;
         let end_ast = to_ast_point2d(&ctor.end).map_err(|err| Error { msg: err.to_string() })?;
-        let line_ast = ast::Expr::CallExpressionKw(Box::new(ast::Node::no_src(ast::CallExpressionKw {
-            callee: ast::Node::no_src(ast_sketch2_name(LINE_FN)),
-            unlabeled: None,
-            arguments: vec![
-                ast::LabeledArg {
-                    label: Some(ast::Identifier::new(LINE_START_PARAM)),
-                    arg: start_ast,
-                },
-                ast::LabeledArg {
-                    label: Some(ast::Identifier::new(LINE_END_PARAM)),
-                    arg: end_ast,
-                },
-            ],
-            digest: None,
-            non_code_meta: Default::default(),
-        })));
+        let line_ast = create_line_ast(start_ast, end_ast);
 
         // Look up existing sketch.
         let sketch_id = sketch;
@@ -2635,8 +2620,9 @@ pub(crate) fn ast_sketch2_name(name: &str) -> ast::Name {
     }
 }
 
+// Shared AST creation helpers used by both frontend and transpiler to ensure consistency.
+
 /// Create an AST node for sketch2::coincident([expr1, expr2])
-/// This is a shared helper used by both frontend and transpiler.
 pub(crate) fn create_coincident_ast(expr1: ast::Expr, expr2: ast::Expr) -> ast::Expr {
     // Create array [expr1, expr2]
     let array_expr = ast::Expr::ArrayExpression(Box::new(ast::Node::no_src(ast::ArrayExpression {
@@ -2655,8 +2641,27 @@ pub(crate) fn create_coincident_ast(expr1: ast::Expr, expr2: ast::Expr) -> ast::
     })))
 }
 
+/// Create an AST node for sketch2::line(start = [...], end = [...])
+pub(crate) fn create_line_ast(start_ast: ast::Expr, end_ast: ast::Expr) -> ast::Expr {
+    ast::Expr::CallExpressionKw(Box::new(ast::Node::no_src(ast::CallExpressionKw {
+        callee: ast::Node::no_src(ast_sketch2_name(LINE_FN)),
+        unlabeled: None,
+        arguments: vec![
+            ast::LabeledArg {
+                label: Some(ast::Identifier::new(LINE_START_PARAM)),
+                arg: start_ast,
+            },
+            ast::LabeledArg {
+                label: Some(ast::Identifier::new(LINE_END_PARAM)),
+                arg: end_ast,
+            },
+        ],
+        digest: None,
+        non_code_meta: Default::default(),
+    })))
+}
+
 /// Create an AST node for sketch2::horizontal(line)
-/// This is a shared helper used by both frontend and transpiler.
 pub(crate) fn create_horizontal_ast(line_expr: ast::Expr) -> ast::Expr {
     ast::Expr::CallExpressionKw(Box::new(ast::Node::no_src(ast::CallExpressionKw {
         callee: ast::Node::no_src(ast_sketch2_name(HORIZONTAL_FN)),
@@ -2668,7 +2673,6 @@ pub(crate) fn create_horizontal_ast(line_expr: ast::Expr) -> ast::Expr {
 }
 
 /// Create an AST node for sketch2::vertical(line)
-/// This is a shared helper used by both frontend and transpiler.
 pub(crate) fn create_vertical_ast(line_expr: ast::Expr) -> ast::Expr {
     ast::Expr::CallExpressionKw(Box::new(ast::Node::no_src(ast::CallExpressionKw {
         callee: ast::Node::no_src(ast_sketch2_name(VERTICAL_FN)),
@@ -2680,7 +2684,6 @@ pub(crate) fn create_vertical_ast(line_expr: ast::Expr) -> ast::Expr {
 }
 
 /// Create a member expression like object.property (e.g., line1.end)
-/// This is a shared helper used by both frontend and transpiler.
 pub(crate) fn create_member_expression(object_expr: ast::Expr, property: &str) -> ast::Expr {
     ast::Expr::MemberExpression(Box::new(ast::Node::no_src(ast::MemberExpression {
         object: object_expr,
@@ -2699,7 +2702,6 @@ pub(crate) fn create_member_expression(object_expr: ast::Expr, property: &str) -
 }
 
 /// Create an AST node for sketch2::equalLength([line1, line2])
-/// This is a shared helper used by both frontend and transpiler.
 pub(crate) fn create_equal_length_ast(line1_expr: ast::Expr, line2_expr: ast::Expr) -> ast::Expr {
     // Create array [line1, line2]
     let array_expr = ast::Expr::ArrayExpression(Box::new(ast::Node::no_src(ast::ArrayExpression {

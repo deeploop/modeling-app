@@ -6,10 +6,11 @@ use crate::{
     execution::{
         ExecOutcome, ExecutorContext, KclValue,
         geometry::{Sketch, SketchSurface},
+        types::NumericType,
     },
     frontend::{
         api::{Expr, Number},
-        ast_name_expr, ast_sketch2_name, create_coincident_ast, create_equal_length_ast, create_horizontal_ast,
+        ast_name_expr, create_coincident_ast, create_equal_length_ast, create_horizontal_ast, create_line_ast,
         create_member_expression, create_vertical_ast,
         sketch::Point2d,
         to_ast_point2d,
@@ -156,7 +157,7 @@ fn build_sketch_block_ast(
         current_y = end_y;
 
         // Create the line AST node using the same pattern as frontend::add_line
-        let line_ast = create_line_ast(start_x, start_y, end_x, end_y, sketch.units)?;
+        let line_ast = create_line_ast_from_coords(start_x, start_y, end_x, end_y, sketch.units)?;
 
         // Create variable declaration for the line
         let line_var_decl = ast::BodyItem::VariableDeclaration(Box::new(ast::Node::no_src(ast::VariableDeclaration {
@@ -263,32 +264,24 @@ fn build_sketch_block_ast(
     Ok(ast::Node::no_src(program))
 }
 
-/// Convert UnitLength to NumericSuffix
-fn unit_length_to_numeric_suffix(
-    units: kittycad_modeling_cmds::units::UnitLength,
-) -> crate::parsing::token::NumericSuffix {
-    match units {
-        kittycad_modeling_cmds::units::UnitLength::Millimeters => crate::parsing::token::NumericSuffix::Mm,
-        kittycad_modeling_cmds::units::UnitLength::Centimeters => crate::parsing::token::NumericSuffix::Cm,
-        kittycad_modeling_cmds::units::UnitLength::Meters => crate::parsing::token::NumericSuffix::M,
-        kittycad_modeling_cmds::units::UnitLength::Inches => crate::parsing::token::NumericSuffix::Inch,
-        kittycad_modeling_cmds::units::UnitLength::Feet => crate::parsing::token::NumericSuffix::Ft,
-        kittycad_modeling_cmds::units::UnitLength::Yards => crate::parsing::token::NumericSuffix::Yd,
-    }
-}
-
 /// Convert f64 + UnitLength to Number (rounding to 2 decimal places)
 fn f64_to_number(value: f64, units: kittycad_modeling_cmds::units::UnitLength) -> Number {
     // Round to 2 decimal places
     let rounded = (value * 100.0).round() / 100.0;
+    // Use existing conversion chain: UnitLength -> NumericType -> NumericSuffix
+    let numeric_type = NumericType::from(units);
+    let units_suffix = numeric_type
+        .try_into()
+        .expect("UnitLength should always convert to NumericSuffix");
     Number {
         value: rounded,
-        units: unit_length_to_numeric_suffix(units),
+        units: units_suffix,
     }
 }
 
 /// Create an AST node for a line call (sketch2::line)
-fn create_line_ast(
+/// Uses shared helper from frontend.rs
+fn create_line_ast_from_coords(
     start_x: f64,
     start_y: f64,
     end_x: f64,
@@ -321,64 +314,38 @@ fn create_line_ast(
         ))
     })?;
 
-    // Create the line call: sketch2::line(start = [...], end = [...])
-    let line_ast = ast::Expr::CallExpressionKw(Box::new(ast::Node::no_src(ast::CallExpressionKw {
-        callee: ast::Node::no_src(ast_sketch2_name("line")),
-        unlabeled: None,
-        arguments: vec![
-            ast::LabeledArg {
-                label: Some(ast::Identifier::new("start")),
-                arg: start_ast,
-            },
-            ast::LabeledArg {
-                label: Some(ast::Identifier::new("end")),
-                arg: end_ast,
-            },
-        ],
-        digest: None,
-        non_code_meta: Default::default(),
-    })));
-
-    Ok(line_ast)
+    // Use shared helper to create the line AST
+    Ok(create_line_ast(start_ast, end_ast))
 }
 
+// Helper functions below use shared AST creation functions from frontend.rs
+// to ensure consistency between transpiler and frontend code generation.
+
 /// Create an AST node for sketch2::coincident([line1.end, line2.start])
-/// Uses shared helpers from frontend.rs
 fn create_coincident_ast_from_names(line1_name: &str, line2_name: &str) -> ast::Expr {
-    // Create line name expressions
     let line1_expr = ast_name_expr(line1_name.to_string());
     let line2_expr = ast_name_expr(line2_name.to_string());
-
-    // Create member expressions for line1.end and line2.start
     let line1_end = create_member_expression(line1_expr, "end");
     let line2_start = create_member_expression(line2_expr, "start");
-
-    // Use shared helper to create coincident constraint AST
     create_coincident_ast(line1_end, line2_start)
 }
 
 /// Create an AST node for sketch2::horizontal(line)
-/// Uses shared helper from frontend.rs
 fn create_horizontal_ast_from_name(line_name: &str) -> ast::Expr {
     let line_expr = ast_name_expr(line_name.to_string());
     create_horizontal_ast(line_expr)
 }
 
 /// Create an AST node for sketch2::vertical(line)
-/// Uses shared helper from frontend.rs
 fn create_vertical_ast_from_name(line_name: &str) -> ast::Expr {
     let line_expr = ast_name_expr(line_name.to_string());
     create_vertical_ast(line_expr)
 }
 
 /// Create an AST node for sketch2::equalLength([line1, line2])
-/// Uses the shared helper from frontend.rs
 fn create_equal_length_ast_from_names(line1_name: &str, line2_name: &str) -> ast::Expr {
-    // Create line name expressions using the same helper as frontend
     let line1_expr = ast_name_expr(line1_name.to_string());
     let line2_expr = ast_name_expr(line2_name.to_string());
-
-    // Use the shared helper to create the equal length constraint AST
     create_equal_length_ast(line1_expr, line2_expr)
 }
 
