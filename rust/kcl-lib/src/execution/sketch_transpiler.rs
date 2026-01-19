@@ -112,7 +112,7 @@ fn build_sketch_block_ast(
     let pipe_expr = find_start_profile_pipe(program, variable_name)?;
 
     // Map segments to their AST calls using source ranges
-    let segment_ast_calls = map_segments_to_ast_calls(sketch, &pipe_expr)?;
+    let segment_ast_calls = map_segments_to_ast_calls(sketch, pipe_expr)?;
 
     // Detect constraints from AST
     let constraints = detect_constraints_from_ast(&segment_ast_calls, sketch)?;
@@ -283,7 +283,7 @@ fn f64_to_number(value: f64, units: kittycad_modeling_cmds::units::UnitLength) -
     let rounded = (value * 100.0).round() / 100.0;
     Number {
         value: rounded,
-        units: unit_length_to_numeric_suffix(units).into(),
+        units: unit_length_to_numeric_suffix(units),
     }
 }
 
@@ -431,17 +431,14 @@ fn find_start_profile_pipe<'a>(program: &'a Program, variable_name: &str) -> Res
 
     // Find the variable declaration
     for item in &program.ast.body {
-        if let ast::BodyItem::VariableDeclaration(var_decl) = item {
-            if var_decl.declaration.id.name == variable_name {
-                // Check if init is a PipeExpression
-                if let ast::Expr::PipeExpression(pipe) = &var_decl.declaration.init {
-                    // Use the lint's detection logic as the source of truth
-                    // This ensures the transpiler only processes what the lint detects
-                    if contains_start_profile(&pipe.inner) {
-                        return Ok(&pipe.inner);
-                    }
-                }
-            }
+        if let ast::BodyItem::VariableDeclaration(var_decl) = item
+            && var_decl.declaration.id.name == variable_name
+            && let ast::Expr::PipeExpression(pipe) = &var_decl.declaration.init
+            && contains_start_profile(&pipe.inner)
+        {
+            // Use the lint's detection logic as the source of truth
+            // This ensures the transpiler only processes what the lint detects
+            return Ok(&pipe.inner);
         }
     }
 
@@ -505,15 +502,14 @@ fn detect_constraints_from_ast(
         } else if function_name == "angledLine" {
             // Check for segLen() in the length argument
             for arg in &call.arguments {
-                if let Some(label) = &arg.label {
-                    if label.name == "length" {
-                        // Check if the arg contains segLen()
-                        if let Some(seg_index) = find_seg_len_reference(&arg.arg, segment_ast_calls, sketch)? {
-                            constraints[*segment_index].push(SegmentConstraint::EqualLength {
-                                other_segment_index: seg_index,
-                            });
-                        }
-                    }
+                if let Some(label) = &arg.label
+                    && label.name == "length"
+                    && let Some(seg_index) = find_seg_len_reference(&arg.arg, segment_ast_calls, sketch)?
+                {
+                    // Check if the arg contains segLen()
+                    constraints[*segment_index].push(SegmentConstraint::EqualLength {
+                        other_segment_index: seg_index,
+                    });
                 }
             }
         }
@@ -528,65 +524,60 @@ fn find_seg_len_reference(
     _segment_ast_calls: &[(usize, &ast::CallExpressionKw)],
     sketch: &Sketch,
 ) -> Result<Option<usize>, KclError> {
-    match expr {
-        ast::Expr::CallExpressionKw(call) => {
-            // Check if it's segLen()
-            if call.callee.name.name == "segLen" {
-                // Get the argument (should be a tag name like "seg01")
-                // segLen takes the tag name as an unlabeled argument (Name expression)
-                let tag_name_opt = if let Some(unlabeled) = &call.unlabeled {
-                    // Check if unlabeled is a Name (tag reference like "seg01")
-                    if let ast::Expr::Name(name) = unlabeled {
+    if let ast::Expr::CallExpressionKw(call) = expr
+        && call.callee.name.name == "segLen"
+    {
+        // Check if it's segLen()
+        // Get the argument (should be a tag name like "seg01")
+        // segLen takes the tag name as an unlabeled argument (Name expression)
+        let tag_name_opt = if let Some(unlabeled) = &call.unlabeled {
+            // Check if unlabeled is a Name (tag reference like "seg01")
+            if let ast::Expr::Name(name) = unlabeled {
+                Some(name.name.name.as_str())
+            } else if let ast::Expr::TagDeclarator(tag) = unlabeled {
+                // Also support TagDeclarator for completeness
+                Some(tag.inner.name.as_str())
+            } else {
+                None
+            }
+        } else {
+            // Check labeled arguments for a tag
+            call.arguments.iter().find_map(|arg| {
+                if let Some(label) = &arg.label
+                    && (label.name == "tag" || label.name == "segment")
+                {
+                    if let ast::Expr::Name(name) = &arg.arg {
                         Some(name.name.name.as_str())
-                    } else if let ast::Expr::TagDeclarator(tag) = unlabeled {
-                        // Also support TagDeclarator for completeness
+                    } else if let ast::Expr::TagDeclarator(tag) = &arg.arg {
                         Some(tag.inner.name.as_str())
                     } else {
                         None
                     }
                 } else {
-                    // Check labeled arguments for a tag
-                    call.arguments.iter().find_map(|arg| {
-                        if let Some(label) = &arg.label {
-                            if label.name == "tag" || label.name == "segment" {
-                                if let ast::Expr::Name(name) = &arg.arg {
-                                    Some(name.name.name.as_str())
-                                } else if let ast::Expr::TagDeclarator(tag) = &arg.arg {
-                                    Some(tag.inner.name.as_str())
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    })
-                };
+                    None
+                }
+            })
+        };
 
-                if let Some(tag_name) = tag_name_opt {
-                    // Find the segment with this tag
-                    // Tag format in AST is usually "seg01" (without $)
-                    // Tag format in sketch is usually "$seg01" (with $)
-                    for (i, path_segment) in sketch.paths.iter().enumerate() {
-                        let base = path_segment.get_base();
-                        if let Some(segment_tag) = &base.tag {
-                            // Compare tag names - remove $ prefix if present
-                            let segment_tag_name = segment_tag
-                                .inner
-                                .name
-                                .strip_prefix('$')
-                                .unwrap_or(&segment_tag.inner.name);
-                            if segment_tag_name == tag_name {
-                                return Ok(Some(i));
-                            }
-                        }
+        if let Some(tag_name) = tag_name_opt {
+            // Find the segment with this tag
+            // Tag format in AST is usually "seg01" (without $)
+            // Tag format in sketch is usually "$seg01" (with $)
+            for (i, path_segment) in sketch.paths.iter().enumerate() {
+                let base = path_segment.get_base();
+                if let Some(segment_tag) = &base.tag {
+                    // Compare tag names - remove $ prefix if present
+                    let segment_tag_name = segment_tag
+                        .inner
+                        .name
+                        .strip_prefix('$')
+                        .unwrap_or(&segment_tag.inner.name);
+                    if segment_tag_name == tag_name {
+                        return Ok(Some(i));
                     }
                 }
             }
         }
-        _ => {}
     }
 
     Ok(None)

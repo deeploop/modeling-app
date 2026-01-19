@@ -47,19 +47,19 @@ pub fn lint_old_sketch_syntax(node: Node, _prog: &AstNode<Program>) -> Result<Ve
     };
 
     // Check if the variable declaration has a pipe expression with startProfile
-    if let Expr::PipeExpression(pipe) = &var_decl.declaration.init {
-        if contains_start_profile(pipe) {
-            let var_name = &var_decl.declaration.id.name;
-            let init_node = &var_decl.declaration.init;
-            let source_range = SourceRange::new(init_node.start(), init_node.end(), init_node.module_id());
+    if let Expr::PipeExpression(pipe) = &var_decl.declaration.init
+        && contains_start_profile(pipe)
+    {
+        let var_name = &var_decl.declaration.id.name;
+        let init_node = &var_decl.declaration.init;
+        let source_range = SourceRange::new(init_node.start(), init_node.end(), init_node.module_id());
 
-            // Just detect - no suggestion since transpilation requires ExecOutcome
-            findings.push(Z0005.at(
-                format!("found old sketch syntax in '{}'", var_name),
-                source_range,
-                None, // No suggestion - use WASM transpile function
-            ));
-        }
+        // Just detect - no suggestion since transpilation requires ExecOutcome
+        findings.push(Z0005.at(
+            format!("found old sketch syntax in '{}'", var_name),
+            source_range,
+            None, // No suggestion - use WASM transpile function
+        ));
     }
 
     Ok(findings)

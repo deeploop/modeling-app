@@ -1665,11 +1665,6 @@ impl LanguageServer for Backend {
             // Check if this is a Z0005 (old sketch syntax) diagnostic without a suggestion
             // The diagnostic code should be "Z0005" if it's from our lint
             // Also check the message as a fallback in case code isn't set
-            let diagnostic_code = diagnostic.code.as_ref().and_then(|c| match c {
-                tower_lsp::lsp_types::NumberOrString::String(s) => Some(s.clone()),
-                tower_lsp::lsp_types::NumberOrString::Number(n) => Some(n.to_string()),
-            });
-
             let is_z0005 = diagnostic
                 .code
                 .as_ref()
