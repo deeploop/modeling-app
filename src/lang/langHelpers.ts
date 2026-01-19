@@ -11,6 +11,8 @@ import { jsAppSettings } from '@src/lib/settings/settingsUtils'
 import type { ModuleType } from '@src/lib/wasm_lib_wrapper'
 import { REJECTED_TOO_EARLY_WEBSOCKET_MESSAGE } from '@src/network/utils'
 import type { EditorView } from 'codemirror'
+import { projectFsManager } from '@src/lang/std/fileSystemManager'
+import { IS_STAGING_OR_DEBUG } from '@src/routes/utils'
 
 export type ToolTip =
   | 'lineTo'
@@ -176,16 +178,28 @@ export async function lintAst({
   ast,
   sourceCode,
   instance,
+  rustContext,
 }: {
   ast: Program
   sourceCode: string
   instance: ModuleType
+  rustContext?: RustContext
 }): Promise<Array<Diagnostic>> {
   try {
-    const discovered_findings = await kclLint(ast, instance)
-    return discovered_findings.map((lint) => {
+    let discovered_findings = await kclLint(ast, instance)
+
+    // Filter out Z0005 if not in staging/debug mode
+    if (!IS_STAGING_OR_DEBUG) {
+      discovered_findings = discovered_findings.filter(
+        (lint) => lint.finding.code !== 'Z0005'
+      )
+    }
+
+    // Process findings - for Z0005 without suggestion, we'll create actions async
+    const diagnosticsPromises = discovered_findings.map(async (lint) => {
       let actions
       const suggestion = lint.suggestion
+
       if (suggestion) {
         actions = [
           {
@@ -202,15 +216,106 @@ export async function lintAst({
             },
           },
         ]
+      } else if (
+        lint.finding.code === 'Z0005' &&
+        rustContext &&
+        IS_STAGING_OR_DEBUG
+      ) {
+        // For Z0005 without suggestion, try to transpile using WASM
+        // Extract variable name from the AST at the lint position
+        try {
+          const lintStart = lint.pos[0]
+          const lintEnd = lint.pos[1]
+
+          // Find the variable declaration that contains this range
+          let variableName: string | null = null
+          for (const item of ast.body) {
+            if (item.type === 'VariableDeclaration') {
+              const varDecl = item.declaration
+
+              // Check if lint range is within this variable's init expression
+              if (
+                lintStart >= varDecl.init.start &&
+                lintEnd <= varDecl.init.end
+              ) {
+                variableName = varDecl.id.name
+                break
+              }
+            }
+          }
+
+          if (variableName) {
+            try {
+              const settings = await jsAppSettings(rustContext.settingsActor)
+              // Get the context instance - we need to access the private method or create it
+              // The context is created lazily, so we'll create it here if needed
+              const wasmInstance = await rustContext.wasmInstancePromise
+
+              // Create a temporary context for transpilation
+              // Note: This creates a new context each time, but transpile_old_sketch
+              // uses the execution cache, so it should be fast
+              const ctx = new wasmInstance.Context(
+                (rustContext as any).engineCommandManager,
+                projectFsManager
+              )
+
+              const transpiledCodeResult = await ctx.transpile_old_sketch(
+                JSON.stringify(ast),
+                variableName,
+                null, // path
+                JSON.stringify(settings)
+              )
+
+              const transpiledCode =
+                typeof transpiledCodeResult === 'string'
+                  ? transpiledCodeResult
+                  : String(transpiledCodeResult)
+
+              if (transpiledCode && transpiledCode.trim()) {
+                actions = [
+                  {
+                    name: `convert '${variableName}' to new sketch block syntax`,
+                    apply: (view: EditorView, from: number, to: number) => {
+                      view.dispatch({
+                        changes: {
+                          from: toUtf16(lint.pos[0], sourceCode),
+                          to: toUtf16(lint.pos[1], sourceCode),
+                          insert: transpiledCode.trim(),
+                        },
+                        annotations: [lspCodeActionEvent],
+                      })
+                    },
+                  },
+                ]
+              } else {
+                console.warn(
+                  '[lintAst] Z0005 transpilation returned empty result'
+                )
+              }
+            } catch (transpileError) {
+              console.warn(
+                '[lintAst] Z0005 transpilation failed:',
+                transpileError
+              )
+            }
+          }
+        } catch (e) {
+          console.warn('[lintAst] Error processing Z0005:', e)
+        }
       }
-      return {
+
+      const diagnostic = {
         from: toUtf16(lint.pos[0], sourceCode),
         to: toUtf16(lint.pos[1], sourceCode),
         message: lint.finding.title,
         severity: 'info',
         actions,
-      }
+      } as const
+
+      return diagnostic
     })
+
+    return await Promise.all(diagnosticsPromises)
   } catch (e: any) {
     console.log(e)
     return []

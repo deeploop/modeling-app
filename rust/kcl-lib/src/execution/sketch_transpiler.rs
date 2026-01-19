@@ -4,7 +4,7 @@ use crate::{
     Program,
     errors::{KclError, KclErrorDetails},
     execution::{
-        ExecOutcome, KclValue,
+        ExecOutcome, ExecutorContext, KclValue,
         geometry::{Sketch, SketchSurface},
     },
     frontend::{
@@ -55,6 +55,50 @@ pub fn transpile_old_sketch_to_new(
     // Convert AST to string
     let output = sketch_block.recast_top(&Default::default(), 0);
     Ok(output)
+}
+
+/// Transpile an old-style sketch to new sketch block syntax by re-executing the program.
+///
+/// This function re-executes the program using the execution cache (which should be very fast
+/// if the program hasn't changed), then extracts the sketch and transpiles it.
+///
+/// # Arguments
+/// * `ctx` - The executor context (must not be mock mode)
+/// * `program` - The parsed AST program
+/// * `variable_name` - The name of the variable containing the sketch
+///
+/// # Returns
+/// The transpiled code as a string, or an error if execution or transpilation fails.
+pub async fn transpile_old_sketch_to_new_with_execution(
+    ctx: &ExecutorContext,
+    program: Program,
+    variable_name: &str,
+) -> Result<String, KclError> {
+    // Re-execute using cache (should be very fast if program hasn't changed)
+    // Both run_mock and run_with_caching use caching, but different types:
+    // - run_mock: uses memory cache (cached variables/state), always re-executes full program
+    // - run_with_caching: uses AST cache, can do incremental execution of changed parts only
+    let exec_outcome = if ctx.is_mock() {
+        // For mock contexts, use run_mock (uses memory cache via read_old_memory/write_old_memory)
+        ctx.run_mock(&program, &crate::execution::MockConfig::default())
+            .await
+            .map_err(|e| {
+                KclError::new_internal(KclErrorDetails::new(
+                    format!("Failed to execute program for transpilation (mock): {:?}", e),
+                    vec![],
+                ))
+            })?
+    } else {
+        ctx.run_with_caching(program.clone()).await.map_err(|e| {
+            KclError::new_internal(KclErrorDetails::new(
+                format!("Failed to execute program for transpilation: {:?}", e),
+                vec![],
+            ))
+        })?
+    };
+
+    // Now transpile using the execution outcome
+    transpile_old_sketch_to_new(&exec_outcome, &program, variable_name)
 }
 
 /// Build the AST for a sketch block from the executed sketch
@@ -381,20 +425,20 @@ fn get_sketch_from_exec_outcome(exec_outcome: &ExecOutcome, variable_name: &str)
 }
 
 /// Find the pipe expression containing startProfile for the given variable
+/// Uses the same detection logic as the lint (lint_old_sketch_syntax) to ensure consistency
 fn find_start_profile_pipe<'a>(program: &'a Program, variable_name: &str) -> Result<&'a ast::PipeExpression, KclError> {
+    use crate::lint::checks::contains_start_profile;
+
     // Find the variable declaration
     for item in &program.ast.body {
         if let ast::BodyItem::VariableDeclaration(var_decl) = item {
             if var_decl.declaration.id.name == variable_name {
                 // Check if init is a PipeExpression
                 if let ast::Expr::PipeExpression(pipe) = &var_decl.declaration.init {
-                    // Check if it contains startProfile
-                    for call in &pipe.inner.body {
-                        if let ast::Expr::CallExpressionKw(call_kw) = call {
-                            if call_kw.callee.name.name == "startProfile" {
-                                return Ok(&pipe.inner);
-                            }
-                        }
+                    // Use the lint's detection logic as the source of truth
+                    // This ensures the transpiler only processes what the lint detects
+                    if contains_start_profile(&pipe.inner) {
+                        return Ok(&pipe.inner);
                     }
                 }
             }
@@ -575,8 +619,10 @@ profile001 = startProfile(sketch001, at = [-3.71, 5.81])
 
         // Execute it using the test server
         let _ctx = new_context(true, None).await.unwrap();
-        let (exec_state, ctx, env_ref, _img, _step) =
-            execute_and_snapshot_ast(program.clone(), None, false).await.unwrap();
+        let snapshot = execute_and_snapshot_ast(program.clone(), None, &[]).await.unwrap();
+        let exec_state = snapshot.exec_state;
+        let ctx = snapshot.ctx;
+        let env_ref = snapshot.env;
 
         // Convert to ExecOutcome
         let exec_outcome = exec_state.into_exec_outcome(env_ref, &ctx).await;
@@ -628,8 +674,10 @@ profile001 = startProfile(sketch001, at = [2.25, 4.48])
 
         // Execute it using the test server
         let _ctx = new_context(true, None).await.unwrap();
-        let (exec_state, ctx, env_ref, _img, _step) =
-            execute_and_snapshot_ast(program.clone(), None, false).await.unwrap();
+        let snapshot = execute_and_snapshot_ast(program.clone(), None, &[]).await.unwrap();
+        let exec_state = snapshot.exec_state;
+        let ctx = snapshot.ctx;
+        let env_ref = snapshot.env;
 
         // Convert to ExecOutcome
         let exec_outcome = exec_state.into_exec_outcome(env_ref, &ctx).await;

@@ -717,7 +717,7 @@ impl ProfileClosed {
 }
 
 /// Has the profile been closed?
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Copy, Hash, Ord, PartialOrd, ts_rs::TS)]
+#[derive(Debug, Serialize, Eq, PartialEq, Clone, Copy, Hash, Ord, PartialOrd, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 pub enum ProfileClosed {
     /// It's definitely open.
@@ -1016,7 +1016,7 @@ impl EdgeCut {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Clone, Copy, ts_rs::TS)]
+#[derive(Debug, Serialize, PartialEq, Clone, Copy, ts_rs::TS)]
 #[ts(export)]
 pub struct Point2d {
     pub x: f64,

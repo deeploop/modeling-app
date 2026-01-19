@@ -56,6 +56,7 @@ use crate::{
         ast::types::{Expr, Node, VariableKind},
         token::TokenStream,
     },
+    transpile_old_sketch_to_new_with_execution,
 };
 
 pub mod custom_notifications;
@@ -764,7 +765,16 @@ impl Backend {
             return Ok(());
         }
 
-        match executor_ctx.run_with_caching(ast.clone()).await {
+        // Use run_mock for mock contexts, run_with_caching for live contexts
+        let result = if executor_ctx.is_mock() {
+            executor_ctx
+                .run_mock(ast, &crate::execution::MockConfig::default())
+                .await
+        } else {
+            executor_ctx.run_with_caching(ast.clone()).await
+        };
+
+        match result {
             Err(err) => {
                 self.add_to_diagnostics(params, &[err], false).await;
 
@@ -1612,15 +1622,143 @@ impl LanguageServer for Backend {
     }
 
     async fn code_action(&self, params: CodeActionParams) -> RpcResult<Option<CodeActionResponse>> {
-        let actions = params
-            .context
-            .diagnostics
-            .into_iter()
-            .filter_map(|diagnostic| {
-                let (suggestion, range) = diagnostic
-                    .data
-                    .as_ref()
-                    .and_then(|data| serde_json::from_value::<LspSuggestion>(data.clone()).ok())?;
+        let filename = params.text_document.uri.to_string();
+
+        let Some(code_bytes) = self.code_map.get(&filename) else {
+            return Ok(Some(vec![]));
+        };
+        let Ok(code) = std::str::from_utf8(&code_bytes) else {
+            return Ok(Some(vec![]));
+        };
+        let Some(ast) = self.ast_map.get(&filename) else {
+            return Ok(Some(vec![]));
+        };
+
+        let mut actions = vec![];
+
+        // Get the actual diagnostics from our map to ensure we have the full diagnostic info
+        let stored_diagnostics = self
+            .diagnostics_map
+            .get(&filename)
+            .map(|d| d.clone())
+            .unwrap_or_default();
+
+        // Use stored diagnostics if available, otherwise fall back to params.context.diagnostics
+        let diagnostics_to_check: Vec<_> = if stored_diagnostics.is_empty() {
+            params.context.diagnostics.clone()
+        } else {
+            // Match params.context.diagnostics with stored diagnostics by range
+            params
+                .context
+                .diagnostics
+                .iter()
+                .filter_map(|param_diag| {
+                    stored_diagnostics
+                        .iter()
+                        .find(|stored_diag| stored_diag.range == param_diag.range)
+                        .cloned()
+                })
+                .collect()
+        };
+
+        for diagnostic in diagnostics_to_check {
+            // Check if this is a Z0005 (old sketch syntax) diagnostic without a suggestion
+            // The diagnostic code should be "Z0005" if it's from our lint
+            // Also check the message as a fallback in case code isn't set
+            let diagnostic_code = diagnostic.code.as_ref().and_then(|c| match c {
+                tower_lsp::lsp_types::NumberOrString::String(s) => Some(s.clone()),
+                tower_lsp::lsp_types::NumberOrString::Number(n) => Some(n.to_string()),
+            });
+
+            let is_z0005 = diagnostic
+                .code
+                .as_ref()
+                .and_then(|c| match c {
+                    tower_lsp::lsp_types::NumberOrString::String(s) => Some(s == "Z0005"),
+                    tower_lsp::lsp_types::NumberOrString::Number(_) => None,
+                })
+                .unwrap_or(false)
+                || diagnostic.message == "Old sketch syntax can be converted to new sketch block syntax";
+
+            let has_suggestion = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| serde_json::from_value::<LspSuggestion>(data.clone()).ok())
+                .is_some();
+
+            // If it's Z0005 and we don't have a suggestion yet, try to transpile
+            if is_z0005 && !has_suggestion {
+                // Find the variable name by looking at the AST at the diagnostic range
+                let range = diagnostic.range;
+                let start_pos = position_to_char_index(range.start, code);
+
+                // Find the variable declaration that contains this range in its init expression
+                let var_name = ast.ast.body.iter().find_map(|item| {
+                    if let crate::parsing::ast::types::BodyItem::VariableDeclaration(var_decl) = item {
+                        let init_start = var_decl.declaration.init.start();
+                        let init_end = var_decl.declaration.init.end();
+                        // Check if the diagnostic range is within this variable's init
+                        if start_pos >= init_start && start_pos <= init_end {
+                            Some(var_decl.declaration.id.name.as_str())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
+
+                let Some(var_name) = var_name else {
+                    continue;
+                };
+
+                // Try to transpile if we have executor context
+                let executor_ctx_guard = self.executor_ctx().await;
+                let Some(executor_ctx) = executor_ctx_guard.as_ref() else {
+                    continue;
+                };
+
+                match transpile_old_sketch_to_new_with_execution(executor_ctx, ast.clone(), var_name).await {
+                    Ok(transpiled_sketch_block) => {
+                        // The transpiler returns just the sketch block, we need to replace the init expression
+                        let range = diagnostic.range;
+                        let edit = TextEdit {
+                            range,
+                            new_text: transpiled_sketch_block.trim().to_string(),
+                        };
+                        let changes = HashMap::from([(params.text_document.uri.clone(), vec![edit])]);
+
+                        let code_action = CodeAction {
+                            title: format!("convert '{}' to new sketch block syntax", var_name),
+                            kind: Some(CodeActionKind::QUICKFIX),
+                            diagnostics: Some(vec![diagnostic]),
+                            edit: Some(WorkspaceEdit {
+                                changes: Some(changes),
+                                document_changes: None,
+                                change_annotations: None,
+                            }),
+                            command: None,
+                            is_preferred: Some(true),
+                            disabled: None,
+                            data: None,
+                        };
+
+                        actions.push(CodeActionOrCommand::CodeAction(code_action));
+                        continue;
+                    }
+                    Err(_e) => {
+                        // Transpilation failed, skip this diagnostic
+                        continue;
+                    }
+                }
+            }
+
+            // Handle regular suggestions (like camelCase)
+            if let Some((suggestion, range)) = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| serde_json::from_value::<LspSuggestion>(data.clone()).ok())
+            {
                 let edit = TextEdit {
                     range,
                     new_text: suggestion.insert,
@@ -1629,7 +1767,7 @@ impl LanguageServer for Backend {
 
                 // If you add more code action kinds, make sure you add it to the server
                 // capabilities on initialization!
-                Some(CodeActionOrCommand::CodeAction(CodeAction {
+                actions.push(CodeActionOrCommand::CodeAction(CodeAction {
                     title: suggestion.title,
                     kind: Some(CodeActionKind::QUICKFIX),
                     diagnostics: Some(vec![diagnostic]),
@@ -1642,9 +1780,9 @@ impl LanguageServer for Backend {
                     is_preferred: Some(true),
                     disabled: None,
                     data: None,
-                }))
-            })
-            .collect();
+                }));
+            }
+        }
 
         Ok(Some(actions))
     }
