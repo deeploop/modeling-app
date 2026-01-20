@@ -12,7 +12,6 @@ import type { ModuleType } from '@src/lib/wasm_lib_wrapper'
 import { REJECTED_TOO_EARLY_WEBSOCKET_MESSAGE } from '@src/network/utils'
 import type { EditorView } from 'codemirror'
 import { projectFsManager } from '@src/lang/std/fileSystemManager'
-import { IS_STAGING_OR_DEBUG } from '@src/routes/utils'
 
 export type ToolTip =
   | 'lineTo'
@@ -188,8 +187,21 @@ export async function lintAst({
   try {
     let discovered_findings = await kclLint(ast, instance)
 
-    // Filter out Z0005 if not in staging/debug mode
-    if (!IS_STAGING_OR_DEBUG) {
+    // Filter out Z0005 if new sketch mode is not enabled
+    // Only show Z0005 when useNewSketchMode setting is enabled
+    let shouldShowZ0005 = false
+    if (rustContext) {
+      try {
+        const settings = await jsAppSettings(rustContext.settingsActor)
+        shouldShowZ0005 =
+          settings?.settings?.modeling?.use_new_sketch_mode === true
+      } catch {
+        // If we can't get settings, don't show the lint
+        shouldShowZ0005 = false
+      }
+    }
+
+    if (!shouldShowZ0005) {
       discovered_findings = discovered_findings.filter(
         (lint) => lint.finding.code !== 'Z0005'
       )
@@ -219,7 +231,7 @@ export async function lintAst({
       } else if (
         lint.finding.code === 'Z0005' &&
         rustContext &&
-        IS_STAGING_OR_DEBUG
+        shouldShowZ0005
       ) {
         // For Z0005 without suggestion, try to transpile using WASM
         // Extract variable name from the AST at the lint position
