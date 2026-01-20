@@ -6,7 +6,6 @@ use crate::{
     execution::{
         ExecOutcome, ExecutorContext, KclValue,
         geometry::{Sketch, SketchSurface},
-        types::NumericType,
     },
     frontend::{
         api::{Expr, Number},
@@ -266,17 +265,9 @@ fn build_sketch_block_ast(
 
 /// Convert f64 + UnitLength to Number (rounding to 2 decimal places)
 fn f64_to_number(value: f64, units: kittycad_modeling_cmds::units::UnitLength) -> Number {
-    // Round to 2 decimal places
+    // Round to 2 decimal places, then convert using From trait
     let rounded = (value * 100.0).round() / 100.0;
-    // Use existing conversion chain: UnitLength -> NumericType -> NumericSuffix
-    let numeric_type = NumericType::from(units);
-    let units_suffix = numeric_type
-        .try_into()
-        .expect("UnitLength should always convert to NumericSuffix");
-    Number {
-        value: rounded,
-        units: units_suffix,
-    }
+    (rounded, units).into()
 }
 
 /// Create an AST node for a line call (sketch2::line)

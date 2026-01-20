@@ -3,6 +3,7 @@
 #![allow(async_fn_in_trait)]
 
 use kcl_error::SourceRange;
+use kittycad_modeling_cmds::units::UnitLength;
 use serde::{Deserialize, Serialize};
 
 pub use crate::ExecutorSettings as Settings;
@@ -204,6 +205,20 @@ impl Number {
         Number {
             value,
             units: self.units,
+        }
+    }
+}
+
+impl From<(f64, UnitLength)> for Number {
+    fn from((value, units): (f64, UnitLength)) -> Self {
+        // Use existing conversion chain: UnitLength -> NumericType -> NumericSuffix
+        let numeric_type = crate::execution::types::NumericType::from(units);
+        let units_suffix = numeric_type
+            .try_into()
+            .expect("UnitLength should always convert to NumericSuffix");
+        Number {
+            value,
+            units: units_suffix,
         }
     }
 }
