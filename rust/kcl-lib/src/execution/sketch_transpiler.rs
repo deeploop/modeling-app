@@ -357,7 +357,8 @@ fn create_equal_length_ast_from_names(line1_name: &str, line2_name: &str) -> ast
 fn get_plane_name(sketch: &Sketch) -> Result<String, KclError> {
     match &sketch.on {
         SketchSurface::Plane(plane) => {
-            let name = match plane.kind {
+            // Check plane.kind to determine the base plane type
+            let base_name = match plane.kind {
                 crate::execution::geometry::PlaneKind::XY => "XY",
                 crate::execution::geometry::PlaneKind::XZ => "XZ",
                 crate::execution::geometry::PlaneKind::YZ => "YZ",
@@ -368,7 +369,31 @@ fn get_plane_name(sketch: &Sketch) -> Result<String, KclError> {
                     )));
                 }
             };
-            Ok(name.to_string())
+
+            // Detect negative orientation by checking x_axis
+            // For XY and XZ planes: negative planes have x_axis.x < 0
+            // For YZ planes: negative planes have x_axis.y < 0
+            let is_negative = match plane.kind {
+                crate::execution::geometry::PlaneKind::XY | crate::execution::geometry::PlaneKind::XZ => {
+                    plane.info.x_axis.x < 0.0
+                }
+                crate::execution::geometry::PlaneKind::YZ => plane.info.x_axis.y < 0.0,
+                crate::execution::geometry::PlaneKind::Custom => {
+                    // Already handled above, but needed for match exhaustiveness
+                    return Err(KclError::new_internal(KclErrorDetails::new(
+                        "Cannot transpile sketch on custom plane".to_string(),
+                        vec![],
+                    )));
+                }
+            };
+
+            let name = if is_negative {
+                format!("-{}", base_name)
+            } else {
+                base_name.to_string()
+            };
+
+            Ok(name)
         }
         SketchSurface::Face(_) => Err(KclError::new_internal(KclErrorDetails::new(
             "Cannot transpile sketch on face".to_string(),
@@ -715,6 +740,44 @@ profile001 = startProfile(sketch001, at = [-3.71, 5.81])
             error_msg.contains("not a line segment") || error_msg.contains("not supported"),
             "Error message should indicate unsupported segment type. Got: {}",
             error_msg
+        );
+
+        // Clean up
+        ctx.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_transpile_negative_plane() {
+        // Test that transpilation correctly handles negative planes (e.g., -XY)
+        let code = r#"
+sketch001 = startSketchOn(-XY)
+profile001 = startProfile(sketch001, at = [2.0, 3.0])
+  |> line(end = [5.0, 3.0])
+  |> line(end = [5.0, 6.0])
+"#;
+
+        // Parse the code
+        let program = Program::parse_no_errs(code).unwrap();
+
+        // Execute it using the test server
+        let _ctx = new_context(true, None).await.unwrap();
+        let snapshot = execute_and_snapshot_ast(program.clone(), None, false).await.unwrap();
+        let exec_state = snapshot.0;
+        let ctx = snapshot.1;
+        let env_ref = snapshot.2;
+
+        // Convert to ExecOutcome
+        let exec_outcome = exec_state.into_exec_outcome(env_ref, &ctx).await;
+
+        // Try to transpile - this should succeed and output "-XY" for the plane
+        let transpiled =
+            transpile_old_sketch_to_new(&exec_outcome, &program, "profile001").expect("Transpiler should succeed");
+
+        // Verify that the output contains "-XY" (not just "XY")
+        assert!(
+            transpiled.contains("sketch(on = -XY)"),
+            "Transpiled output should contain '-XY' plane name. Got: {}",
+            transpiled
         );
 
         // Clean up
