@@ -11,7 +11,6 @@ import { jsAppSettings } from '@src/lib/settings/settingsUtils'
 import type { ModuleType } from '@src/lib/wasm_lib_wrapper'
 import { REJECTED_TOO_EARLY_WEBSOCKET_MESSAGE } from '@src/network/utils'
 import type { EditorView } from 'codemirror'
-import { projectFsManager } from '@src/lang/std/fileSystemManager'
 
 export type ToolTip =
   | 'lineTo'
@@ -262,17 +261,11 @@ export async function lintAst({
           if (variableName) {
             try {
               const settings = await jsAppSettings(rustContext.settingsActor)
-              // Get the context instance - we need to access the private method or create it
-              // The context is created lazily, so we'll create it here if needed
-              const wasmInstance = await rustContext.wasmInstancePromise
 
               // Create a temporary context for transpilation
               // Note: This creates a new context each time, but transpile_old_sketch
               // uses the execution cache, so it should be fast
-              const ctx = new wasmInstance.Context(
-                (rustContext as any).engineCommandManager,
-                projectFsManager
-              )
+              const ctx = await rustContext.createNewContext()
 
               const transpiledCodeResult = await ctx.transpile_old_sketch(
                 JSON.stringify(ast),
