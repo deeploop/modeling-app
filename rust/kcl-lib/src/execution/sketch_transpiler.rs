@@ -5,7 +5,7 @@ use crate::{
     errors::{KclError, KclErrorDetails},
     execution::{
         ExecOutcome, ExecutorContext, KclValue,
-        geometry::{Sketch, SketchSurface},
+        geometry::{Path, Sketch, SketchSurface},
     },
     frontend::{
         api::{Expr, Number},
@@ -108,6 +108,19 @@ fn build_sketch_block_ast(
     program: &Program,
     variable_name: &str,
 ) -> Result<ast::Node<ast::Program>, KclError> {
+    // Check that all segments are supported types (currently only ToPoint is supported)
+    for (i, path_segment) in sketch.paths.iter().enumerate() {
+        if !matches!(path_segment, Path::ToPoint { .. }) {
+            return Err(KclError::new_internal(KclErrorDetails::new(
+                format!(
+                    "Transpilation not supported: segment {} is not a line segment (ToPoint). Only line segments are currently supported.",
+                    i + 1
+                ),
+                vec![],
+            )));
+        }
+    }
+
     // Find the pipe expression with startProfile
     let pipe_expr = find_start_profile_pipe(program, variable_name)?;
 
@@ -568,10 +581,10 @@ profile001 = startProfile(sketch001, at = [-3.71, 5.81])
 
         // Execute it using the test server
         let _ctx = new_context(true, None).await.unwrap();
-        let snapshot = execute_and_snapshot_ast(program.clone(), None, &[]).await.unwrap();
-        let exec_state = snapshot.exec_state;
-        let ctx = snapshot.ctx;
-        let env_ref = snapshot.env;
+        let snapshot = execute_and_snapshot_ast(program.clone(), None, false).await.unwrap();
+        let exec_state = snapshot.0;
+        let ctx = snapshot.1;
+        let env_ref = snapshot.2;
 
         // Convert to ExecOutcome
         let exec_outcome = exec_state.into_exec_outcome(env_ref, &ctx).await;
@@ -623,10 +636,10 @@ profile001 = startProfile(sketch001, at = [2.25, 4.48])
 
         // Execute it using the test server
         let _ctx = new_context(true, None).await.unwrap();
-        let snapshot = execute_and_snapshot_ast(program.clone(), None, &[]).await.unwrap();
-        let exec_state = snapshot.exec_state;
-        let ctx = snapshot.ctx;
-        let env_ref = snapshot.env;
+        let snapshot = execute_and_snapshot_ast(program.clone(), None, false).await.unwrap();
+        let exec_state = snapshot.0;
+        let ctx = snapshot.1;
+        let env_ref = snapshot.2;
 
         // Convert to ExecOutcome
         let exec_outcome = exec_state.into_exec_outcome(env_ref, &ctx).await;
@@ -656,6 +669,52 @@ profile001 = startProfile(sketch001, at = [2.25, 4.48])
             normalized_transpiled, normalized_expected,
             "Transpiled output does not match expected output\n\nGot:\n{}\n\nExpected:\n{}",
             normalized_transpiled, normalized_expected
+        );
+
+        // Clean up
+        ctx.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_transpile_fails_with_unsupported_segments() {
+        // Test that transpilation fails when there are bezier curves
+        let code = r#"
+sketch001 = startSketchOn(XY)
+profile001 = startProfile(sketch001, at = [-3.71, 5.81])
+  |> line(end = [-3.8, -4.92])
+  |> line(end = [3.47, -5.75])
+  |> xLine(length = 7.68)
+  |> yLine(length = 6.29)
+  |> bezierCurve(control1 = [5, 0], control2 = [5, 10], end = [10, 10])
+"#;
+
+        // Parse the code
+        let program = Program::parse_no_errs(code).unwrap();
+
+        // Execute it using the test server
+        let _ctx = new_context(true, None).await.unwrap();
+        let snapshot = execute_and_snapshot_ast(program.clone(), None, false).await.unwrap();
+        let exec_state = snapshot.0;
+        let ctx = snapshot.1;
+        let env_ref = snapshot.2;
+
+        // Convert to ExecOutcome
+        let exec_outcome = exec_state.into_exec_outcome(env_ref, &ctx).await;
+
+        // Try to transpile - this should fail because bezier curves are not supported
+        let result = transpile_old_sketch_to_new(&exec_outcome, &program, "profile001");
+
+        assert!(
+            result.is_err(),
+            "Transpilation should fail when bezier curves are present"
+        );
+
+        // Verify the error message mentions the unsupported segment
+        let error_msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            error_msg.contains("not a line segment") || error_msg.contains("not supported"),
+            "Error message should indicate unsupported segment type. Got: {}",
+            error_msg
         );
 
         // Clean up

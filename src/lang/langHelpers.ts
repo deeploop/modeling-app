@@ -210,6 +210,9 @@ export async function lintAst({
     // Process findings - for Z0005 without suggestion, we'll create actions async
     const diagnosticsPromises = discovered_findings.map(async (lint) => {
       let actions
+      const transpilationFailMessage =
+        'Deprecated sketch syntax. This sketch cannot be converted to new sketch block syntax at this time.'
+      let message = lint.finding.title
       const suggestion = lint.suggestion
 
       if (suggestion) {
@@ -300,11 +303,15 @@ export async function lintAst({
                   },
                 ]
               } else {
+                // Transpilation returned empty result - update message
+                message = transpilationFailMessage
                 console.warn(
                   '[lintAst] Z0005 transpilation returned empty result'
                 )
               }
             } catch (transpileError) {
+              // Transpilation failed - update message
+              message = transpilationFailMessage
               console.warn(
                 '[lintAst] Z0005 transpilation failed:',
                 transpileError
@@ -319,7 +326,7 @@ export async function lintAst({
       const diagnostic = {
         from: toUtf16(lint.pos[0], sourceCode),
         to: toUtf16(lint.pos[1], sourceCode),
-        message: lint.finding.title,
+        message,
         severity: 'info',
         actions,
       } as const
