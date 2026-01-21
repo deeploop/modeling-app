@@ -12,6 +12,7 @@ description: Variables in memory after executing sketch_block_lines_coincident_s
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 4,
                 "kind": {
                   "line": {
@@ -94,6 +95,7 @@ description: Variables in memory after executing sketch_block_lines_coincident_s
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 9,
                 "kind": {
                   "line": {
@@ -176,6 +178,7 @@ description: Variables in memory after executing sketch_block_lines_coincident_s
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 14,
                 "kind": {
                   "line": {
@@ -258,6 +261,7 @@ description: Variables in memory after executing sketch_block_lines_coincident_s
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 17,
                 "kind": {
                   "line": {
@@ -340,6 +344,7 @@ description: Variables in memory after executing sketch_block_lines_coincident_s
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 5,
                 "kind": {
                   "point": {
@@ -389,6 +394,7 @@ description: Variables in memory after executing sketch_block_lines_coincident_s
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 10,
                 "kind": {
                   "point": {

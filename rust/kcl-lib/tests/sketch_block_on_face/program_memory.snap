@@ -412,6 +412,7 @@ description: Variables in memory after executing sketch_block_on_face.kcl
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 5,
                 "kind": {
                   "line": {
@@ -494,6 +495,7 @@ description: Variables in memory after executing sketch_block_on_face.kcl
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 8,
                 "kind": {
                   "line": {
@@ -576,6 +578,7 @@ description: Variables in memory after executing sketch_block_on_face.kcl
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 11,
                 "kind": {
                   "line": {
@@ -658,6 +661,7 @@ description: Variables in memory after executing sketch_block_on_face.kcl
           "repr": {
             "Solved": {
               "segment": {
+                "id": "[uuid]",
                 "objectId": 14,
                 "kind": {
                   "line": {
