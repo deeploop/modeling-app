@@ -27,6 +27,7 @@ import { machine as centerRectTool } from '@src/machines/sketchSolve/tools/cente
 import { machine as dimensionTool } from '@src/machines/sketchSolve/tools/dimensionTool'
 import { machine as pointTool } from '@src/machines/sketchSolve/tools/pointTool'
 import { machine as lineTool } from '@src/machines/sketchSolve/tools/lineToolDiagram'
+import { machine as trimTool } from '@src/machines/sketchSolve/tools/trimToolDiagram'
 import { machine as centerArcTool } from '@src/machines/sketchSolve/tools/centerArcToolDiagram'
 import { orthoScale, perspScale } from '@src/clientSideScene/helpers'
 import { deferredCallback } from '@src/lib/utils'
@@ -64,6 +65,7 @@ export type SpawnToolActor = <K extends EquipTool>(
       rustContext: RustContext
       kclManager: KclManager
       sketchId: number
+      sceneGraphDelta?: SceneGraphDelta
     }
   }
 ) => ActorRefFrom<(typeof equipTools)[K]>
@@ -120,7 +122,17 @@ type ToolActorRef =
   | ActorRefFrom<typeof centerRectTool>
   | ActorRefFrom<typeof pointTool>
   | ActorRefFrom<typeof lineTool>
+  | ActorRefFrom<typeof trimTool>
   | ActorRefFrom<typeof centerArcTool>
+
+export const equipTools = Object.freeze({
+  trimTool,
+  centerRectTool,
+  dimensionTool,
+  pointTool,
+  lineTool,
+  centerArcTool,
+})
 
 export type SketchSolveContext = {
   sketchSolveToolName: EquipTool | null
@@ -144,13 +156,6 @@ export type SketchSolveContext = {
   rustContext: RustContext
   kclManager: KclManager
 }
-export const equipTools = Object.freeze({
-  centerRectTool,
-  dimensionTool,
-  pointTool,
-  lineTool,
-  centerArcTool,
-})
 
 export type SolveActionArgs = ActionArgs<
   SketchSolveContext,
@@ -935,6 +940,7 @@ export function spawnTool(
       rustContext: context.rustContext,
       kclManager: context.kclManager,
       sketchId: context.sketchId,
+      sceneGraphDelta: context.sketchExecOutcome?.sceneGraphDelta,
     },
   })
 

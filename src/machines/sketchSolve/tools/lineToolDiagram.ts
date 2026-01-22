@@ -40,6 +40,7 @@ export const machine = setup({
       rustContext: RustContext
       kclManager: KclManager
       sketchId: number
+      sceneGraphDelta?: SceneGraphDelta
     },
   },
   actions: {
