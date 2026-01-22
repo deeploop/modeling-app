@@ -20,7 +20,7 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "@codemirror/language": "^6.11.3",
-    "@codemirror/state": "^6.5.2",
+    "@codemirror/state": "^6.5.4",
     "@lezer/highlight": "^1.2.1",
     "typescript": "^5.7.2"
   },
