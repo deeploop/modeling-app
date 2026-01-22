@@ -30,14 +30,8 @@ import { topLevelRange } from '@src/lang/util'
 import type { CallExpressionKw, Expr, PathToNode } from '@src/lang/wasm'
 import { parse, recast, resultIsOk } from '@src/lang/wasm'
 import { cameraMouseDragGuards } from '@src/lib/cameraControls'
-import {
-  engineCommandManager,
-  kclManager,
-  sceneEntitiesManager,
-  sceneInfra,
-} from '@src/lib/singletons'
-import type { useSettings } from '@src/lib/singletons'
-import { commandBarActor } from '@src/lib/singletons'
+import type { CameraSystem } from '@src/lib/cameraControls'
+import { useSingletons } from '@src/lib/boot'
 import { err, reportRejection, trap } from '@src/lib/trap'
 import { throttle, toSync } from '@src/lib/utils'
 import type { SegmentOverlay } from '@src/machines/modelingSharedTypes'
@@ -45,20 +39,24 @@ import {
   removeSingleConstraint,
   transformAstSketchLines,
 } from '@src/lang/std/sketchcombos'
-import { getSketchSolveToolIconMap } from '@src/lib/toolbar'
+import { getSketchSolveToolIconMap, useToolbarConfig } from '@src/lib/toolbar'
+import type { SceneInfra } from '@src/clientSideScene/sceneInfra'
 
 function useShouldHideScene(): { hideClient: boolean; hideServer: boolean } {
   const [isCamMoving, setIsCamMoving] = useState(false)
   const [isTween, setIsTween] = useState(false)
 
   const { state } = useModelingContext()
+  const { sceneInfra } = useSingletons()
 
   useEffect(() => {
-    sceneInfra.camControls.setIsCamMovingCallback((isMoving, isTween) => {
-      setIsCamMoving(isMoving)
-      setIsTween(isTween)
-    })
-  }, [])
+    sceneInfra.camControls.setIsCamMovingCallback(
+      (isMoving: boolean, isTweenValue: boolean) => {
+        setIsCamMoving(isMoving)
+        setIsTween(isTweenValue)
+      }
+    )
+  }, [sceneInfra.camControls])
 
   if (DEBUG_SHOW_BOTH_SCENES || !isCamMoving)
     return { hideClient: false, hideServer: false }
@@ -74,13 +72,11 @@ export const ClientSideScene = ({
   cameraControls,
   enableTouchControls,
 }: {
-  cameraControls: ReturnType<
-    typeof useSettings
-  >['modeling']['mouseControls']['current']
-  enableTouchControls: ReturnType<
-    typeof useSettings
-  >['modeling']['enableTouchControls']['current']
+  cameraControls: CameraSystem
+  enableTouchControls: boolean
 }) => {
+  const { engineCommandManager, sceneEntitiesManager, sceneInfra } =
+    useSingletons()
   const { state, send, context } = useModelingContext()
   const { hideClient, hideServer } = useShouldHideScene()
 
@@ -89,15 +85,15 @@ export const ClientSideScene = ({
   useEffect(() => {
     sceneInfra.camControls.interactionGuards =
       cameraMouseDragGuards[cameraControls]
-  }, [cameraControls])
+  }, [cameraControls, sceneInfra.camControls])
   useEffect(() => {
     sceneInfra.camControls.initTouchControls(enableTouchControls)
-  }, [enableTouchControls])
+  }, [enableTouchControls, sceneInfra.camControls])
   useEffect(() => {
     sceneInfra.updateOtherSelectionColors(
       state?.context?.selectionRanges?.otherSelections || []
     )
-  }, [state?.context?.selectionRanges?.otherSelections])
+  }, [state?.context?.selectionRanges?.otherSelections, sceneInfra])
 
   const containerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -206,16 +202,13 @@ export const ClientSideScene = ({
   )
 }
 
-// Map sketchSolve tool names to their corresponding icon names
-// Derived from toolbar config to maintain a single source of truth
-const toolIconMap = getSketchSolveToolIconMap()
-const getToolIconName = (toolName: string | null): CustomIconName | null => {
-  if (!toolName) return null
-  return toolIconMap[toolName] || null
-}
-
 const SketchSolveToolIconOverlay = () => {
   const { state, context } = useModelingContext()
+  const toolbarConfig = useToolbarConfig()
+  const toolIconMap = useMemo(
+    () => getSketchSolveToolIconMap(toolbarConfig),
+    [toolbarConfig]
+  )
   const [mousePosition, setMousePosition] = useState<{
     x: number
     y: number
@@ -225,7 +218,7 @@ const SketchSolveToolIconOverlay = () => {
   const isToolEquipped =
     state.matches('sketchSolveMode') && context.sketchSolveToolName !== null
   const iconName = isToolEquipped
-    ? getToolIconName(context.sketchSolveToolName)
+    ? (toolIconMap[context.sketchSolveToolName ?? ''] ?? null)
     : null
 
   useEffect(() => {
@@ -310,6 +303,7 @@ const Overlay = ({
   overlayIndex: number
   pathToNodeString: string
 }) => {
+  const { kclManager } = useSingletons()
   const wasmInstance = use(kclManager.wasmInstancePromise)
   const { context, send, state } = useModelingContext()
 
@@ -446,6 +440,7 @@ const SegmentMenu = ({
   pathToNode: PathToNode
   stdLibFnName: string
 }) => {
+  const { kclManager } = useSingletons()
   const wasmInstance = use(kclManager.wasmInstancePromise)
   const { send } = useModelingContext()
   const dependentSourceRanges = findUsesOfTagInPipe(
@@ -510,6 +505,7 @@ const ConstraintSymbol = ({
   constrainInfo: ConstrainInfo
   verticalPosition: 'top' | 'bottom'
 }) => {
+  const { kclManager, commandBarActor } = useSingletons()
   const wasmInstance = use(kclManager.wasmInstancePromise)
   const { context } = useModelingContext()
   const varNameMap: {
@@ -754,13 +750,15 @@ const ConstraintSymbol = ({
   )
 }
 
-const throttled = throttle((a: ReactCameraProperties) => {
-  if (a.type === 'perspective' && a.fov) {
-    sceneInfra.camControls.dollyZoom(a.fov).catch(reportRejection)
-  }
-}, 1000 / 15)
+const throttled = (sceneInfra: SceneInfra) =>
+  throttle((a: ReactCameraProperties) => {
+    if (a.type === 'perspective' && a.fov) {
+      sceneInfra.camControls.dollyZoom(a.fov).catch(reportRejection)
+    }
+  }, 1000 / 15)
 
 export const CamDebugSettings = () => {
+  const { sceneInfra, commandBarActor } = useSingletons()
   const [camSettings, setCamSettings] = useState<ReactCameraProperties>(
     sceneInfra.camControls.reactCameraProperties
   )
@@ -813,7 +811,7 @@ export const CamDebugSettings = () => {
           onChange={(e) => {
             setFov(parseFloat(e.target.value))
 
-            throttled({
+            throttled(sceneInfra)({
               ...camSettings,
               fov: parseFloat(e.target.value),
             })

@@ -4,12 +4,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import CommandBarSelectionMixedInput from '@src/components/CommandBar/CommandBarSelectionMixedInput'
 import type { CommandArgument } from '@src/lib/commandTypes'
 
-vi.mock('@src/lib/singletons', () => {
+vi.mock('@src/lib/app', () => {
   const mockModelingSend = vi.fn()
   const wasmInstancePromise = vi.importMock(
     '@rust/kcl-wasm-lib/pkg/kcl_wasm_lib'
   )
-  return {
+  const singletons = {
     engineCommandManager: {
       modelingSend: mockModelingSend,
       wasmInstancePromise,
@@ -24,6 +24,12 @@ vi.mock('@src/lib/singletons', () => {
     },
     commandBarActor: { send: vi.fn() },
     useCommandBarState: () => ({ context: { argumentsToSubmit: {} } }),
+  }
+  class App {
+    singletons = singletons
+  }
+  return {
+    App,
   }
 })
 
@@ -64,11 +70,12 @@ describe('CommandBarSelectionMixedInput', () => {
 
   describe('clearSelectionFirst behavior', () => {
     it('should send clear selection command when clearSelectionFirst is true', async () => {
-      const { engineCommandManager, kclManager } = await import(
-        '@src/lib/singletons'
+      const { App } = await import('@src/lib/app')
+      const { singletons } = new App()
+      const wasmInstance = await singletons.kclManager.wasmInstancePromise
+      const mockModelingSend = vi.mocked(
+        singletons.engineCommandManager.modelingSend
       )
-      const wasmInstance = await kclManager.wasmInstancePromise
-      const mockModelingSend = vi.mocked(engineCommandManager.modelingSend)
 
       const arg = createArg(true)
 
@@ -90,11 +97,12 @@ describe('CommandBarSelectionMixedInput', () => {
     })
 
     it('should NOT send clear selection command when clearSelectionFirst is false', async () => {
-      const { engineCommandManager, kclManager } = await import(
-        '@src/lib/singletons'
+      const { App } = await import('@src/lib/app')
+      const { singletons } = new App()
+      const wasmInstance = await singletons.kclManager.wasmInstancePromise
+      const mockModelingSend = vi.mocked(
+        singletons.engineCommandManager.modelingSend
       )
-      const wasmInstance = await kclManager.wasmInstancePromise
-      const mockModelingSend = vi.mocked(engineCommandManager.modelingSend)
 
       const arg = createArg(false)
 
@@ -112,11 +120,12 @@ describe('CommandBarSelectionMixedInput', () => {
     })
 
     it('should NOT send clear selection command when clearSelectionFirst is undefined', async () => {
-      const { engineCommandManager, kclManager } = await import(
-        '@src/lib/singletons'
+      const { App } = await import('@src/lib/app')
+      const { singletons } = new App()
+      const wasmInstance = await singletons.kclManager.wasmInstancePromise
+      const mockModelingSend = vi.mocked(
+        singletons.engineCommandManager.modelingSend
       )
-      const wasmInstance = await kclManager.wasmInstancePromise
-      const mockModelingSend = vi.mocked(engineCommandManager.modelingSend)
 
       const arg = createArg() // No argument = undefined
 
@@ -134,11 +143,12 @@ describe('CommandBarSelectionMixedInput', () => {
     })
 
     it('should send clear selection command only once on mount', async () => {
-      const { engineCommandManager, kclManager } = await import(
-        '@src/lib/singletons'
+      const { App } = await import('@src/lib/app')
+      const { singletons } = new App()
+      const wasmInstance = await singletons.kclManager.wasmInstancePromise
+      const mockModelingSend = vi.mocked(
+        singletons.engineCommandManager.modelingSend
       )
-      const wasmInstance = await kclManager.wasmInstancePromise
-      const mockModelingSend = vi.mocked(engineCommandManager.modelingSend)
 
       const arg = createArg(true)
 
@@ -171,11 +181,12 @@ describe('CommandBarSelectionMixedInput', () => {
     })
 
     it('should set hasClearedSelection state after clearing', async () => {
-      const { engineCommandManager, kclManager } = await import(
-        '@src/lib/singletons'
+      const { App } = await import('@src/lib/app')
+      const { singletons } = new App()
+      const wasmInstance = await singletons.kclManager.wasmInstancePromise
+      const mockModelingSend = vi.mocked(
+        singletons.engineCommandManager.modelingSend
       )
-      const wasmInstance = await kclManager.wasmInstancePromise
-      const mockModelingSend = vi.mocked(engineCommandManager.modelingSend)
 
       const arg = createArg(true)
 
