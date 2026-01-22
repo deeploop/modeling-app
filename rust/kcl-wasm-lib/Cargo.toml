@@ -18,7 +18,7 @@ typed-path = "0.12.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = { workspace = true }
-data-encoding = "2.9.0"
+data-encoding = "2.10.0"
 futures = "0.3.31"
 # Enable the feature in a transitive dependency.
 getrandom_2 = { package = "getrandom", version = "0.2", features = ["js"] }
