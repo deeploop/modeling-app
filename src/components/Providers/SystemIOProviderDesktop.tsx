@@ -1,6 +1,5 @@
 import { useLspContext } from '@src/components/LspProvider'
 import { useFileSystemWatcher } from '@src/hooks/useFileSystemWatcher'
-import { fsManager } from '@src/lang/std/fileSystemManager'
 import { EXECUTE_AST_INTERRUPT_ERROR_MESSAGE } from '@src/lib/constants'
 import makeUrlPathRelative from '@src/lib/makeUrlPathRelative'
 import {
@@ -23,6 +22,7 @@ import {
 import { MlEphantManagerReactContext } from '@src/machines/mlEphantManagerMachine'
 import {
   useHasListedProjects,
+  useLastOperation,
   useProjectDirectoryPath,
   useProjectIdToConversationId,
   useRequestedFileName,
@@ -33,16 +33,21 @@ import {
   NO_PROJECT_DIRECTORY,
   type RequestedKCLFile,
   SystemIOMachineEvents,
+  SystemIOMachineStates,
 } from '@src/machines/systemIO/utils'
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLocation } from 'react-router-dom'
+import path from 'path'
 
 export function SystemIOMachineLogicListenerDesktop() {
+  // We gotta stop with this pattern. It doesn't scale. "Eager hook creation"
   const requestedProjectName = useRequestedProjectName()
   const requestedFileName = useRequestedFileName()
   const projectDirectoryPath = useProjectDirectoryPath()
   const hasListedProjects = useHasListedProjects()
+  const lastOperation = useLastOperation()
+
   const navigate = useNavigate()
   const settings = useSettings()
   const token = useToken()
@@ -118,6 +123,14 @@ export function SystemIOMachineLogicListenerDesktop() {
       if (!requestedProjectName.name) {
         return
       }
+
+      // Don't navigate if we are on the projects listing, unless we are creating.
+      if (
+        pathname === PATHS.HOME &&
+        lastOperation !== SystemIOMachineStates.creatingProject
+      )
+        return
+
       const projectPathWithoutSpecificKCLFile = joinOSPaths(
         projectDirectoryPath,
         requestedProjectName.name
@@ -133,7 +146,7 @@ export function SystemIOMachineLogicListenerDesktop() {
         requestedProjectDirectory: projectPathWithoutSpecificKCLFile,
       })
       // eslint-disable-next-line react-hooks/exhaustive-deps -- TODO: blanket-ignored fix me!
-    }, [requestedProjectName])
+    }, [requestedProjectName, lastOperation])
   }
 
   /**
@@ -201,7 +214,7 @@ export function SystemIOMachineLogicListenerDesktop() {
 
   const useWatchingApplicationProjectDirectory = () => {
     useFileSystemWatcher(
-      async (eventType, path) => {
+      async (eventType, targetPath) => {
         // Gotcha: Chokidar is buggy. It will emit addDir or add on files that did not get created.
         // This means while the application initialize and Chokidar initializes you cannot tell if
         // a directory or file is actually created or they are buggy signals. This means you must
@@ -214,11 +227,11 @@ export function SystemIOMachineLogicListenerDesktop() {
 
         const folderName =
           systemIOActor.getSnapshot().context.lastProjectDeleteRequest.project
-        const folderPath = `${projectDirectoryPath}${fsManager.path.sep}${folderName}`
+        const folderPath = `${projectDirectoryPath}${path.sep}${folderName}`
         if (
           folderName !== NO_PROJECT_DIRECTORY &&
           (eventType === 'unlinkDir' || eventType === 'unlink') &&
-          path.includes(folderPath)
+          targetPath.includes(folderPath)
         ) {
           // NO OP: The systemIOMachine will be triggering the read in the state transition, don't spam it again
           // once this event is processed after the deletion.
@@ -255,7 +268,7 @@ export function SystemIOMachineLogicListenerDesktop() {
       const requestedFiles: RequestedKCLFile[] = Object.entries(
         outputsRecord
       ).map(([relativePath, fileContents]) => {
-        const lastSep = relativePath.lastIndexOf(window.electron?.sep ?? '')
+        const lastSep = relativePath.lastIndexOf(path.sep)
         let pathPart = relativePath.slice(0, lastSep)
         let filePart = relativePath.slice(lastSep)
         if (lastSep < 0) {
@@ -266,7 +279,7 @@ export function SystemIOMachineLogicListenerDesktop() {
           requestedCode: fileContents,
           requestedFileName: filePart,
           requestedProjectName:
-            projectNameCurrentlyOpened + window.electron?.sep + pathPart,
+            projectNameCurrentlyOpened + path.sep + pathPart,
         }
       })
 

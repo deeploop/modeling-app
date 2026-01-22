@@ -1,4 +1,6 @@
 import type { LoaderFunction } from 'react-router-dom'
+import fsZds from '@src/lib/fs-zds'
+import path from 'path'
 import { redirect } from 'react-router-dom'
 import { waitFor } from 'xstate'
 
@@ -8,11 +10,9 @@ import {
   BROWSER_FILE_NAME,
   BROWSER_PROJECT_NAME,
   FILE_EXT,
-  PROJECT_ENTRYPOINT,
 } from '@src/lib/constants'
 import { getProjectInfo } from '@src/lib/desktop'
 import { readAppSettingsFile } from '@src/lib/desktop'
-import { isDesktop } from '@src/lib/isDesktop'
 import {
   BROWSER_PATH,
   PATHS,
@@ -52,13 +52,9 @@ export const fileLoader =
 
     const isBrowserProject = params.id === decodeURIComponent(BROWSER_PATH)
 
-    const heuristicProjectFilePath =
-      window.electron && params.id
-        ? params.id
-            .split(window.electron.sep)
-            .slice(0, -1)
-            .join(window.electron.sep)
-        : undefined
+    const heuristicProjectFilePath = params.id
+      ? params.id.split(path.sep).slice(0, -1).join(path.sep)
+      : undefined
 
     const wasmInstance = await kclManager.wasmInstancePromise
 
@@ -83,14 +79,12 @@ export const fileLoader =
       const urlObj = new URL(routerData.request.url)
 
       if (!urlObj.pathname.endsWith('/settings')) {
-        const fallbackFile = window.electron
-          ? (await getProjectInfo(window.electron, projectPath, wasmInstance))
-              .default_file
-          : ''
-        let fileExists = isDesktop()
-        if (currentFilePath && fileExists && window.electron) {
+        const fallbackFile = (await getProjectInfo(projectPath, wasmInstance))
+          .default_file
+        let fileExists = true
+        if (currentFilePath && fileExists) {
           try {
-            await window.electron.stat(currentFilePath)
+            await fsZds.stat(currentFilePath)
           } catch (e) {
             if (e === 'ENOENT') {
               fileExists = false
@@ -113,24 +107,21 @@ export const fileLoader =
           !fileExists ||
           !currentFileName ||
           !currentFilePath ||
-          !projectName ||
-          !window.electron
+          !projectName
         ) {
           return redirect(
-            `${PATHS.FILE}/${encodeURIComponent(
-              isDesktop() ? fallbackFile : params.id + '/' + PROJECT_ENTRYPOINT
-            )}${new URL(routerData.request.url).search || ''}`
+            `${PATHS.FILE}/${encodeURIComponent(fallbackFile)}${new URL(routerData.request.url).search || ''}`
           )
         }
 
-        code = await window.electron.readFile(currentFilePath, {
+        code = await fsZds.readFile(currentFilePath, {
           encoding: 'utf-8',
         })
         code = normalizeLineEndings(code)
 
         // If persistCode in localStorage is present, it'll persist that code
         // through *anything*. INTENDED FOR TESTS.
-        if (window.electron.process.env.NODE_ENV === 'test') {
+        if (window.electron?.process.env.NODE_ENV === 'test') {
           code = kclManager.localStoragePersistCode() || code
         }
 
@@ -162,9 +153,7 @@ export const fileLoader =
         readWriteAccess: true,
       }
 
-      const maybeProjectInfo = window.electron
-        ? await getProjectInfo(window.electron, projectPath, wasmInstance)
-        : null
+      const maybeProjectInfo = await getProjectInfo(projectPath, wasmInstance)
 
       const project = maybeProjectInfo ?? defaultProjectData
       await rustContext.sendOpenProject(project, currentFilePath)
@@ -248,12 +237,6 @@ export const homeLoader =
     settingsActor: SettingsActorType
   }): LoaderFunction =>
   async ({ request }): Promise<HomeLoaderData | Response> => {
-    const url = new URL(request.url)
-    if (!isDesktop()) {
-      return redirect(
-        PATHS.FILE + '/%2F' + BROWSER_PROJECT_NAME + (url.search || '')
-      )
-    }
     settingsActor.send({
       type: 'clear.project',
     })

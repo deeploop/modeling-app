@@ -302,10 +302,7 @@ async function getAndSyncStoredToken(input: {
   const cookieToken = getCookie()
   const fileToken =
     window.electron && environmentName
-      ? await readEnvironmentConfigurationToken(
-          window.electron,
-          environmentName
-        )
+      ? await readEnvironmentConfigurationToken(environmentName)
       : ''
   const token = inputToken || cookieToken || fileToken
 
@@ -324,11 +321,7 @@ async function getAndSyncStoredToken(input: {
     if (window.electron) {
       // has just logged in, update storage
       if (environmentName)
-        await writeEnvironmentConfigurationToken(
-          window.electron,
-          environmentName,
-          token
-        )
+        await writeEnvironmentConfigurationToken(environmentName, token)
     }
     return token
   }
@@ -359,7 +352,7 @@ async function logoutEnvironment(requestedDomain?: string) {
       const domain = requestedDomain || env().VITE_ZOO_BASE_DOMAIN
       let token = ''
       if (domain) {
-        token = await readEnvironmentConfigurationToken(window.electron, domain)
+        token = await readEnvironmentConfigurationToken(domain)
       } else {
         return new Error('Unable to logout, cannot find domain')
       }
@@ -391,9 +384,9 @@ async function logoutEnvironment(requestedDomain?: string) {
         }
 
         if (domain) {
-          await writeEnvironmentConfigurationToken(window.electron, domain, '')
+          await writeEnvironmentConfigurationToken(domain, '')
         }
-        await writeEnvironmentFile(window.electron, '')
+        await writeEnvironmentFile('')
         return Promise.resolve(null)
       }
     } catch (e) {
@@ -415,7 +408,7 @@ async function logoutAllEnvironments() {
   if (!window.electron) {
     return new Error('unimplemented for web')
   }
-  const environments = await listAllEnvironments(window.electron)
+  const environments = await listAllEnvironments()
   for (let i = 0; i < environments.length; i++) {
     const environmentName = environments[i]
     // Make the oauth2/token/revoke request per environment

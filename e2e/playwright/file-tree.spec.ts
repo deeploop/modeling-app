@@ -1,5 +1,5 @@
 import * as fs from 'fs'
-import { join } from 'path'
+import path from 'path'
 import { FILE_EXT } from '@src/lib/constants'
 import * as fsp from 'fs/promises'
 import { DefaultLayoutPaneID } from '@src/lib/layout/configs/default'
@@ -14,18 +14,18 @@ import { expect, test } from '@e2e/playwright/zoo-test'
 test.describe('integrations tests', { tag: '@desktop' }, () => {
   test('Creating a new file or switching file while in sketchMode should exit sketchMode', async ({
     page,
-    context,
+    folderSetupFn,
     homePage,
     scene,
     toolbar,
     cmdBar,
   }) => {
-    await context.folderSetupFn(async (dir) => {
-      const bracketDir = join(dir, 'test-sample')
+    await folderSetupFn(async (dir) => {
+      const bracketDir = path.join(dir, 'test-sample')
       await fsp.mkdir(bracketDir, { recursive: true })
       await fsp.copyFile(
         executorInputPath('e2e-can-sketch-on-chamfer.kcl'),
-        join(bracketDir, 'main.kcl')
+        path.join(bracketDir, 'main.kcl')
       )
     })
 
@@ -72,225 +72,239 @@ test.describe('integrations tests', { tag: '@desktop' }, () => {
     })
   })
 })
-test.describe('when using the file tree to', { tag: '@desktop' }, () => {
-  const fromFile = 'main.kcl'
-  const toFile = 'hello.kcl'
+test.describe(
+  'when using the file tree to',
+  { tag: ['@web', '@desktop'] },
+  () => {
+    const fromFile = 'main.kcl'
+    const toFile = 'hello.kcl'
 
-  test(`rename ${fromFile} to ${toFile}, and doesn't crash on reload and settings load`, async ({
-    page,
-  }, testInfo) => {
-    const { panesOpen, pasteCodeInEditor, renameFile, editorTextMatches } =
-      await getUtils(page, test)
+    test(`rename ${fromFile} to ${toFile}, and doesn't crash on reload and settings load`, async ({
+      homePage,
+      page,
+      scene,
+      cmdBar,
+    }, testInfo) => {
+      const {
+        panesOpen,
+        pasteCodeInEditor,
+        renameFile,
+        editorTextMatches,
+        goToHomePageFromModeling,
+      } = await getUtils(page, test)
 
-    await page.setBodyDimensions({ width: 1200, height: 500 })
-    page.on('console', console.log)
+      await page.setBodyDimensions({ width: 1200, height: 500 })
+      page.on('console', console.log)
 
-    await panesOpen(['files', 'code'])
+      await panesOpen(['files', 'code'])
+      const projectName = 'project-000'
+      await homePage.createAndGoToProject(projectName)
 
-    await createProject({ name: 'project-000', page })
-
-    // File the main.kcl with contents
-    const kclCube = await fsp.readFile(
-      'rust/kcl-lib/e2e/executor/inputs/cube.kcl',
-      'utf-8'
-    )
-    await pasteCodeInEditor(kclCube)
-
-    // TODO: We have a timeout of 1s between edits to write to disk. If you reload the page too quickly it won't write to disk.
-    await page.waitForTimeout(2000)
-
-    await renameFile(fromFile, toFile)
-    await page.reload()
-
-    await test.step('Postcondition: editor has same content as before the rename', async () => {
-      await editorTextMatches(kclCube)
-    })
-
-    await test.step('Postcondition: opening and closing settings works', async () => {
-      const settingsOpenButton = page.getByRole('link', {
-        name: 'settings Settings',
-      })
-      const settingsCloseButton = page.getByTestId('settings-close-button')
-      await settingsOpenButton.click()
-      await settingsCloseButton.click()
-    })
-  })
-
-  test('create a new file with the same name as an existing file cancels the operation', async ({
-    context,
-    page,
-    homePage,
-    scene,
-    editor,
-    toolbar,
-  }, testInfo) => {
-    const projectName = 'cube'
-    const mainFile = 'main.kcl'
-    const secondFile = 'cylinder.kcl'
-    const kclCube = await fsp.readFile(executorInputPath('cube.kcl'), 'utf-8')
-    const kclCylinder = await fsp.readFile(
-      executorInputPath('cylinder.kcl'),
-      'utf-8'
-    )
-
-    await context.folderSetupFn(async (dir) => {
-      const cubeDir = join(dir, projectName)
-      await fsp.mkdir(cubeDir, { recursive: true })
-      await fsp.copyFile(executorInputPath('cube.kcl'), join(cubeDir, mainFile))
-      await fsp.copyFile(
-        executorInputPath('cylinder.kcl'),
-        join(cubeDir, secondFile)
-      )
-    })
-
-    const {
-      openFilePanel,
-      renameFile,
-      selectFile,
-      editorTextMatches,
-      waitForPageLoad,
-    } = await getUtils(page, test)
-
-    await test.step(`Setup: Open project and navigate to ${secondFile}`, async () => {
-      await homePage.expectState({
-        projectCards: [
-          {
-            title: projectName,
-            fileCount: 2,
-          },
-        ],
-        sortBy: 'last-modified-desc',
-      })
-      await homePage.openProject(projectName)
-      await waitForPageLoad()
-      await openFilePanel()
-      await selectFile(secondFile)
-    })
-
-    await test.step(`Attempt to rename ${secondFile} to ${mainFile}`, async () => {
-      await renameFile(secondFile, mainFile)
-    })
-
-    await test.step(`Postcondition: ${mainFile} still has the original content`, async () => {
-      await selectFile(mainFile)
-      await editorTextMatches(kclCube)
-    })
-
-    await test.step(`Postcondition: ${secondFile} still exists with the original content`, async () => {
-      await selectFile(secondFile)
-      await editorTextMatches(kclCylinder)
-    })
-  })
-
-  test(
-    `create new folders and that doesn't trigger a navigation`,
-    { tag: ['@macos', '@windows'] },
-    async ({ page, homePage, scene, toolbar, cmdBar }) => {
-      await homePage.goToModelingScene()
+      // File the main.kcl with contents
+      const kclCube = await fsp.readFile(executorInputPath('cube.kcl'), 'utf-8')
+      await pasteCodeInEditor(kclCube)
       await scene.settled(cmdBar)
-      await toolbar.openPane(DefaultLayoutPaneID.Files)
-      const { createNewFolder } = await getUtils(page, test)
+      await renameFile(fromFile, toFile)
+      await goToHomePageFromModeling(page)
+      await homePage.openProject(projectName)
 
-      await createNewFolder('folder')
-
-      await createNewFolder('folder.kcl')
-
-      await test.step(`Postcondition: folders are created and we didn't navigate`, async () => {
-        await toolbar.expectFileTreeState(['folder', 'folder.kcl', 'main.kcl'])
-        await expect(toolbar.fileName).toHaveText('main.kcl')
+      await test.step('Postcondition: editor has same content as before the rename', async () => {
+        await editorTextMatches(kclCube)
       })
-    }
-  )
 
-  test('deleting all files recreates a default main.kcl with no code', async ({
-    page,
-  }, testInfo) => {
-    const { panesOpen, pasteCodeInEditor, deleteFile, editorTextMatches } =
-      await getUtils(page, test)
-
-    await page.setBodyDimensions({ width: 1200, height: 500 })
-    page.on('console', console.log)
-
-    await panesOpen(['files', 'code'])
-
-    await createProject({ name: 'project-000', page })
-    // File the main.kcl with contents
-    const kclCube = await fsp.readFile(
-      'rust/kcl-lib/e2e/executor/inputs/cube.kcl',
-      'utf-8'
-    )
-    await pasteCodeInEditor(kclCube)
-
-    const mainFile = 'main.kcl'
-
-    await deleteFile(mainFile)
-
-    await test.step(`Postcondition: ${mainFile} is recreated but has no content`, async () => {
-      await editorTextMatches('')
+      await test.step('Postcondition: opening and closing settings works', async () => {
+        const settingsOpenButton = page.getByRole('link', {
+          name: 'settings Settings',
+        })
+        const settingsCloseButton = page.getByTestId('settings-close-button')
+        await settingsOpenButton.click()
+        await settingsCloseButton.click()
+      })
     })
-  })
 
-  test('loading small file, then large, then back to small', async ({
-    page,
-    toolbar,
-  }, testInfo) => {
-    const {
-      panesOpen,
-      pasteCodeInEditor,
-      createNewFile,
-      openDebugPanel,
-      closeDebugPanel,
-      expectCmdLog,
-    } = await getUtils(page, test)
+    test('create a new file with the same name as an existing file cancels the operation', async ({
+      fs,
+      folderSetupFn,
+      page,
+      homePage,
+      scene,
+      editor,
+      toolbar,
+      cmdBar,
+    }, testInfo) => {
+      const projectName = 'cube'
+      const mainFile = 'main.kcl'
+      const secondFile = 'cylinder.kcl'
+      const kclCube = await fsp.readFile(executorInputPath('cube.kcl'), 'utf-8')
+      const kclCylinder = await fsp.readFile(
+        executorInputPath('cylinder.kcl'),
+        'utf-8'
+      )
 
-    await page.setViewportSize({ width: 1200, height: 500 })
-    page.on('console', console.log)
+      await folderSetupFn(async (dir) => {
+        const cubeDir = path.join(dir, projectName)
+        await fs.mkdir(cubeDir, { recursive: true })
+        const testData = await fsp.readFile(executorInputPath('cube.kcl'))
+        await fs.writeFile(
+          path.join(cubeDir, mainFile),
+          new Uint8Array(testData)
+        )
 
-    await panesOpen(['files', 'code'])
-    await createProject({ name: 'project-000', page })
+        const testData2 = await fsp.readFile(executorInputPath('cylinder.kcl'))
+        await fs.writeFile(
+          path.join(cubeDir, secondFile),
+          new Uint8Array(testData2)
+        )
+      })
 
-    // Create a small file
-    const kclCube = await fsp.readFile(
-      'rust/kcl-lib/e2e/executor/inputs/cube.kcl',
-      'utf-8'
-    )
-    // pasted into main.kcl
-    await pasteCodeInEditor(kclCube)
+      const {
+        openFilePanel,
+        renameFile,
+        selectFile,
+        editorTextMatches,
+        waitForPageLoad,
+      } = await getUtils(page, test)
 
-    // Create a large lego file
-    await createNewFile('lego')
-    const kclLego = await fsp.readFile(
-      'rust/kcl-lib/e2e/executor/inputs/lego.kcl',
-      'utf-8'
-    )
-    await pasteCodeInEditor(kclLego)
+      await test.step(`Setup: Open project and navigate to ${secondFile}`, async () => {
+        await homePage.expectState({
+          projectCards: [
+            {
+              title: projectName,
+              fileCount: 2,
+            },
+          ],
+          sortBy: 'last-modified-desc',
+        })
 
-    await test.step('swap between small and large files', async () => {
-      await openDebugPanel()
-      // Previously created a file so we need to start back at main.kcl
-      await toolbar.openFile('main.kcl')
-      await expectCmdLog('[data-message-type="execution-done"]', 60_000)
-      // Click the large file
-      await toolbar.openFile('lego.kcl')
-      // Once it is building, click back to the smaller file
-      await toolbar.openFile('main.kcl')
-      await expectCmdLog('[data-message-type="execution-done"]', 60_000)
-      await closeDebugPanel()
+        await homePage.openProject(projectName)
+        await scene.settled(cmdBar)
+
+        await openFilePanel()
+        await selectFile(secondFile)
+      })
+
+      await test.step(`Attempt to rename ${secondFile} to ${mainFile}`, async () => {
+        await renameFile(secondFile, mainFile)
+      })
+
+      await test.step(`Postcondition: ${mainFile} still has the original content`, async () => {
+        await selectFile(mainFile)
+        await editorTextMatches(kclCube)
+      })
+
+      await test.step(`Postcondition: ${secondFile} still exists with the original content`, async () => {
+        await selectFile(secondFile)
+        await editorTextMatches(kclCylinder)
+      })
     })
-  })
-})
+
+    test(
+      `create new folders and that doesn't trigger a navigation`,
+      { tag: ['@macos', '@windows'] },
+      async ({ page, homePage, scene, toolbar, cmdBar }) => {
+        await homePage.createAndGoToProject('project-000')
+        await scene.settled(cmdBar)
+        await toolbar.openPane(DefaultLayoutPaneID.Files)
+        const { createNewFolder } = await getUtils(page, test)
+
+        await createNewFolder('folder')
+        await toolbar.expectFileTreeState(['folder', 'main.kcl'])
+
+        await createNewFolder('folder.kcl')
+        await toolbar.expectFileTreeState(['folder', 'folder.kcl', 'main.kcl'])
+
+        await expect(toolbar.fileName).toHaveText('main.kcl')
+      }
+    )
+
+    test('deleting all files recreates a default main.kcl with no code', async ({
+      page,
+    }, testInfo) => {
+      const { panesOpen, pasteCodeInEditor, deleteFile, editorTextMatches } =
+        await getUtils(page, test)
+
+      await page.setBodyDimensions({ width: 1200, height: 500 })
+      page.on('console', console.log)
+
+      await panesOpen(['files', 'code'])
+
+      await createProject({ name: 'project-000', page })
+      // File the main.kcl with contents
+      const kclCube = await fsp.readFile(
+        'rust/kcl-lib/e2e/executor/inputs/cube.kcl',
+        'utf-8'
+      )
+      await pasteCodeInEditor(kclCube)
+
+      const mainFile = 'main.kcl'
+
+      await deleteFile(mainFile)
+
+      await test.step(`Postcondition: ${mainFile} is recreated but has no content`, async () => {
+        await editorTextMatches('')
+      })
+    })
+
+    test('loading small file, then large, then back to small', async ({
+      homePage,
+      page,
+      toolbar,
+      scene,
+      cmdBar,
+    }, testInfo) => {
+      const {
+        panesOpen,
+        pasteCodeInEditor,
+        createNewFile,
+        openDebugPanel,
+        closeDebugPanel,
+        expectCmdLog,
+      } = await getUtils(page, test)
+
+      await page.setViewportSize({ width: 1200, height: 500 })
+      page.on('console', console.log)
+
+      await panesOpen(['files', 'code'])
+      await homePage.createAndGoToProject('project-000')
+      await scene.settled(cmdBar)
+
+      // Create a small file
+      const kclCube = await fsp.readFile(executorInputPath('cube.kcl'), 'utf-8')
+      // pasted into main.kcl
+      await pasteCodeInEditor(kclCube)
+
+      // Create a large lego file
+      await createNewFile('lego')
+      const kclLego = await fsp.readFile(executorInputPath('lego.kcl'), 'utf-8')
+      await pasteCodeInEditor(kclLego)
+
+      await test.step('swap between small and large files', async () => {
+        await openDebugPanel()
+        // Previously created a file so we need to start back at main.kcl
+        await toolbar.openFile('main.kcl')
+        await expectCmdLog('[data-message-type="execution-done"]', 60_000)
+        // Click the large file
+        await toolbar.openFile('lego.kcl')
+        // Once it is building, click back to the smaller file
+        await toolbar.openFile('main.kcl')
+        await expectCmdLog('[data-message-type="execution-done"]', 60_000)
+        await closeDebugPanel()
+      })
+    })
+  }
+)
 
 test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
-  test('A file you have open', async ({ context, page }, testInfo) => {
-    const { dir } = await context.folderSetupFn(async (dir) => {
-      await fsp.mkdir(join(dir, 'Test Project'), { recursive: true })
+  test('A file you have open', async ({ folderSetupFn, page }, testInfo) => {
+    const { dir } = await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, 'Test Project'), { recursive: true })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(dir, 'Test Project', 'main.kcl')
+        path.join(dir, 'Test Project', 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(dir, 'Test Project', 'fileToRename.kcl')
+        path.join(dir, 'Test Project', 'fileToRename.kcl')
       )
     })
     const u = await getUtils(page)
@@ -301,12 +315,12 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     const projectLink = page.getByText('Test Project')
     const projectMenuButton = page.getByTestId('project-sidebar-toggle')
     const checkUnRenamedFS = () => {
-      const filePath = join(dir, 'Test Project', 'fileToRename.kcl')
+      const filePath = path.join(dir, 'Test Project', 'fileToRename.kcl')
       return fs.existsSync(filePath)
     }
     const newFileName = 'newFileName'
     const checkRenamedFS = () => {
-      const filePath = join(dir, 'Test Project', `${newFileName}.kcl`)
+      const filePath = path.join(dir, 'Test Project', `${newFileName}.kcl`)
       return fs.existsSync(filePath)
     }
     const fileToRename = u.locatorFile('fileToRename.kcl')
@@ -361,16 +375,19 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     })
   })
 
-  test('A file you do not have open', async ({ context, page }, testInfo) => {
-    const { dir } = await context.folderSetupFn(async (dir) => {
-      await fsp.mkdir(join(dir, 'Test Project'), { recursive: true })
+  test('A file you do not have open', async ({
+    folderSetupFn,
+    page,
+  }, testInfo) => {
+    const { dir } = await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, 'Test Project'), { recursive: true })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(dir, 'Test Project', 'main.kcl')
+        path.join(dir, 'Test Project', 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(dir, 'Test Project', 'fileToRename.kcl')
+        path.join(dir, 'Test Project', 'fileToRename.kcl')
       )
     })
     const u = await getUtils(page)
@@ -380,11 +397,11 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     // Constants and locators
     const newFileName = 'newFileName'
     const checkUnRenamedFS = () => {
-      const filePath = join(dir, 'Test Project', 'fileToRename.kcl')
+      const filePath = path.join(dir, 'Test Project', 'fileToRename.kcl')
       return fs.existsSync(filePath)
     }
     const checkRenamedFS = () => {
-      const filePath = join(dir, 'Test Project', `${newFileName}.kcl`)
+      const filePath = path.join(dir, 'Test Project', `${newFileName}.kcl`)
       return fs.existsSync(filePath)
     }
     const projectLink = page.getByText('Test Project')
@@ -437,19 +454,22 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     })
   })
 
-  test(`A folder you're not inside`, async ({ context, page }, testInfo) => {
-    const { dir } = await context.folderSetupFn(async (dir) => {
-      await fsp.mkdir(join(dir, 'Test Project'), { recursive: true })
-      await fsp.mkdir(join(dir, 'Test Project', 'folderToRename'), {
+  test(`A folder you're not inside`, async ({
+    folderSetupFn,
+    page,
+  }, testInfo) => {
+    const { dir } = await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, 'Test Project'), { recursive: true })
+      await fsp.mkdir(path.join(dir, 'Test Project', 'folderToRename'), {
         recursive: true,
       })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(dir, 'Test Project', 'main.kcl')
+        path.join(dir, 'Test Project', 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(dir, 'Test Project', 'folderToRename', 'someFileWithin.kcl')
+        path.join(dir, 'Test Project', 'folderToRename', 'someFileWithin.kcl')
       )
     })
 
@@ -467,11 +487,11 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     const renameInput = page.getByPlaceholder(originalFolderName)
     const newFolderName = 'newFolderName'
     const checkUnRenamedFolderFS = () => {
-      const folderPath = join(dir, 'Test Project', originalFolderName)
+      const folderPath = path.join(dir, 'Test Project', originalFolderName)
       return fs.existsSync(folderPath)
     }
     const checkRenamedFolderFS = () => {
-      const folderPath = join(dir, 'Test Project', newFolderName)
+      const folderPath = path.join(dir, 'Test Project', newFolderName)
       return fs.existsSync(folderPath)
     }
 
@@ -513,19 +533,19 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     })
   })
 
-  test(`A folder you are inside`, async ({ page, context }, testInfo) => {
-    const { dir } = await context.folderSetupFn(async (dir) => {
-      await fsp.mkdir(join(dir, 'Test Project'), { recursive: true })
-      await fsp.mkdir(join(dir, 'Test Project', 'folderToRename'), {
+  test(`A folder you are inside`, async ({ page, folderSetupFn }, testInfo) => {
+    const { dir } = await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, 'Test Project'), { recursive: true })
+      await fsp.mkdir(path.join(dir, 'Test Project', 'folderToRename'), {
         recursive: true,
       })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(dir, 'Test Project', 'main.kcl')
+        path.join(dir, 'Test Project', 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(dir, 'Test Project', 'folderToRename', 'someFileWithin.kcl')
+        path.join(dir, 'Test Project', 'folderToRename', 'someFileWithin.kcl')
       )
     })
 
@@ -544,11 +564,11 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
     const renameInput = page.getByPlaceholder(originalFolderName)
     const newFolderName = 'newFolderName'
     const checkUnRenamedFolderFS = () => {
-      const folderPath = join(dir, 'Test Project', originalFolderName)
+      const folderPath = path.join(dir, 'Test Project', originalFolderName)
       return fs.existsSync(folderPath)
     }
     const checkRenamedFolderFS = () => {
-      const folderPath = join(dir, 'Test Project', newFolderName)
+      const folderPath = path.join(dir, 'Test Project', newFolderName)
       return fs.existsSync(folderPath)
     }
 
@@ -589,7 +609,7 @@ test.describe('Renaming in the file tree', { tag: '@desktop' }, () => {
 
     await test.step('Verify the folder is renamed, and navigated to new path', async () => {
       const urlSnippet = encodeURIComponent(
-        join(newFolderName, 'someFileWithin.kcl')
+        path.join(newFolderName, 'someFileWithin.kcl')
       )
       await page.waitForURL(new RegExp(urlSnippet))
       await expect(projectMenuButton).toContainText('someFileWithin.kcl')
@@ -611,17 +631,17 @@ test.describe('Deleting items from the file pane', { tag: '@desktop' }, () => {
   test(
     `delete file when main.kcl exists, navigate to main.kcl`,
     { tag: '@windows' },
-    async ({ page, context }, testInfo) => {
-      await context.folderSetupFn(async (dir) => {
-        const testDir = join(dir, 'testProject')
+    async ({ page, folderSetupFn }, testInfo) => {
+      await folderSetupFn(async (dir) => {
+        const testDir = path.join(dir, 'testProject')
         await fsp.mkdir(testDir, { recursive: true })
         await fsp.copyFile(
           executorInputPath('cylinder.kcl'),
-          join(testDir, 'main.kcl')
+          path.join(testDir, 'main.kcl')
         )
         await fsp.copyFile(
           executorInputPath('basic_fillet_cube_end.kcl'),
-          join(testDir, 'fileToDelete.kcl')
+          path.join(testDir, 'fileToDelete.kcl')
         )
       })
       const u = await getUtils(page)
@@ -667,21 +687,21 @@ test.describe('Deleting items from the file pane', { tag: '@desktop' }, () => {
   )
 
   test(`Delete folder we are not in, don't navigate`, async ({
-    context,
+    folderSetupFn,
     page,
   }, testInfo) => {
-    await context.folderSetupFn(async (dir) => {
-      await fsp.mkdir(join(dir, 'Test Project'), { recursive: true })
-      await fsp.mkdir(join(dir, 'Test Project', 'folderToDelete'), {
+    await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, 'Test Project'), { recursive: true })
+      await fsp.mkdir(path.join(dir, 'Test Project', 'folderToDelete'), {
         recursive: true,
       })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(dir, 'Test Project', 'main.kcl')
+        path.join(dir, 'Test Project', 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(dir, 'Test Project', 'folderToDelete', 'someFileWithin.kcl')
+        path.join(dir, 'Test Project', 'folderToDelete', 'someFileWithin.kcl')
       )
     })
     const u = await getUtils(page)
@@ -718,21 +738,21 @@ test.describe('Deleting items from the file pane', { tag: '@desktop' }, () => {
   })
 
   test(`Delete folder we are in, navigate to main.kcl`, async ({
-    context,
+    folderSetupFn,
     page,
   }, testInfo) => {
-    await context.folderSetupFn(async (dir) => {
-      await fsp.mkdir(join(dir, 'Test Project'), { recursive: true })
-      await fsp.mkdir(join(dir, 'Test Project', 'folderToDelete'), {
+    await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, 'Test Project'), { recursive: true })
+      await fsp.mkdir(path.join(dir, 'Test Project', 'folderToDelete'), {
         recursive: true,
       })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(dir, 'Test Project', 'main.kcl')
+        path.join(dir, 'Test Project', 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(dir, 'Test Project', 'folderToDelete', 'someFileWithin.kcl')
+        path.join(dir, 'Test Project', 'folderToDelete', 'someFileWithin.kcl')
       )
     })
     const u = await getUtils(page)
@@ -777,26 +797,29 @@ test.describe('Deleting items from the file pane', { tag: '@desktop' }, () => {
 
   // Copied from tests above.
   test(`external deletion of project navigates back home`, async ({
-    context,
+    folderSetupFn,
     page,
   }, testInfo) => {
     const TEST_PROJECT_NAME = 'Test Project'
-    const { dir: projectsDirName } = await context.folderSetupFn(
-      async (dir) => {
-        await fsp.mkdir(join(dir, TEST_PROJECT_NAME), { recursive: true })
-        await fsp.mkdir(join(dir, TEST_PROJECT_NAME, 'folderToDelete'), {
-          recursive: true,
-        })
-        await fsp.copyFile(
-          executorInputPath('basic_fillet_cube_end.kcl'),
-          join(dir, TEST_PROJECT_NAME, 'main.kcl')
+    const { dir: projectsDirName } = await folderSetupFn(async (dir) => {
+      await fsp.mkdir(path.join(dir, TEST_PROJECT_NAME), { recursive: true })
+      await fsp.mkdir(path.join(dir, TEST_PROJECT_NAME, 'folderToDelete'), {
+        recursive: true,
+      })
+      await fsp.copyFile(
+        executorInputPath('basic_fillet_cube_end.kcl'),
+        path.join(dir, TEST_PROJECT_NAME, 'main.kcl')
+      )
+      await fsp.copyFile(
+        executorInputPath('cylinder.kcl'),
+        path.join(
+          dir,
+          TEST_PROJECT_NAME,
+          'folderToDelete',
+          'someFileWithin.kcl'
         )
-        await fsp.copyFile(
-          executorInputPath('cylinder.kcl'),
-          join(dir, TEST_PROJECT_NAME, 'folderToDelete', 'someFileWithin.kcl')
-        )
-      }
-    )
+      )
+    })
     const u = await getUtils(page)
     await page.setViewportSize({ width: 1200, height: 500 })
 
@@ -822,7 +845,7 @@ test.describe('Deleting items from the file pane', { tag: '@desktop' }, () => {
     // Point of divergence. Delete the project folder and see if it goes back
     // to the home view.
     await test.step('Delete projectsDirName/<project-name> externally', async () => {
-      await fsp.rm(join(projectsDirName, TEST_PROJECT_NAME), {
+      await fsp.rm(path.join(projectsDirName, TEST_PROJECT_NAME), {
         recursive: true,
         force: true,
       })
@@ -837,22 +860,22 @@ test.describe('Deleting items from the file pane', { tag: '@desktop' }, () => {
 
 test.describe('Drag and drop moves are undoable', { tag: '@desktop' }, () => {
   test('dragging a file moves it and undo restores it', async ({
-    context,
+    folderSetupFn,
     page,
     homePage,
     toolbar,
     editor,
   }) => {
-    await context.folderSetupFn(async (dir) => {
-      const projectDir = join(dir, 'Drag File Project')
-      await fsp.mkdir(join(projectDir, 'target'), { recursive: true })
+    await folderSetupFn(async (dir) => {
+      const projectDir = path.join(dir, 'Drag File Project')
+      await fsp.mkdir(path.join(projectDir, 'target'), { recursive: true })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(projectDir, 'main.kcl')
+        path.join(projectDir, 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(projectDir, 'fileToMove.kcl')
+        path.join(projectDir, 'fileToMove.kcl')
       )
     })
 
@@ -888,23 +911,27 @@ test.describe('Drag and drop moves are undoable', { tag: '@desktop' }, () => {
   })
 
   test('dragging a folder moves it and undo restores it', async ({
-    context,
+    folderSetupFn,
     page,
     homePage,
     toolbar,
     editor,
   }) => {
-    await context.folderSetupFn(async (dir) => {
-      const projectDir = join(dir, 'Drag Folder Project')
-      await fsp.mkdir(join(projectDir, 'folderToMove'), { recursive: true })
-      await fsp.mkdir(join(projectDir, 'targetFolder'), { recursive: true })
+    await folderSetupFn(async (dir) => {
+      const projectDir = path.join(dir, 'Drag Folder Project')
+      await fsp.mkdir(path.join(projectDir, 'folderToMove'), {
+        recursive: true,
+      })
+      await fsp.mkdir(path.join(projectDir, 'targetFolder'), {
+        recursive: true,
+      })
       await fsp.copyFile(
         executorInputPath('basic_fillet_cube_end.kcl'),
-        join(projectDir, 'main.kcl')
+        path.join(projectDir, 'main.kcl')
       )
       await fsp.copyFile(
         executorInputPath('cylinder.kcl'),
-        join(projectDir, 'folderToMove', 'inside.kcl')
+        path.join(projectDir, 'folderToMove', 'inside.kcl')
       )
     })
 
@@ -950,19 +977,19 @@ test.describe(
   { tag: '@desktop' },
   () => {
     test(`open a file, change something, open a different file, hitting undo should do nothing`, async ({
-      context,
+      folderSetupFn,
       page,
     }, testInfo) => {
-      await context.folderSetupFn(async (dir) => {
-        const testDir = join(dir, 'testProject')
+      await folderSetupFn(async (dir) => {
+        const testDir = path.join(dir, 'testProject')
         await fsp.mkdir(testDir, { recursive: true })
         await fsp.copyFile(
           executorInputPath('cylinder.kcl'),
-          join(testDir, 'main.kcl')
+          path.join(testDir, 'main.kcl')
         )
         await fsp.copyFile(
           executorInputPath('basic_fillet_cube_end.kcl'),
-          join(testDir, 'other.kcl')
+          path.join(testDir, 'other.kcl')
         )
       })
       const u = await getUtils(page)
@@ -1014,19 +1041,19 @@ test.describe(
     })
 
     test(`open a file, change something, undo it, open a different file, hitting redo should do nothing`, async ({
-      context,
+      folderSetupFn,
       page,
     }, testInfo) => {
-      await context.folderSetupFn(async (dir) => {
-        const testDir = join(dir, 'testProject')
+      await folderSetupFn(async (dir) => {
+        const testDir = path.join(dir, 'testProject')
         await fsp.mkdir(testDir, { recursive: true })
         await fsp.copyFile(
           executorInputPath('cylinder.kcl'),
-          join(testDir, 'main.kcl')
+          path.join(testDir, 'main.kcl')
         )
         await fsp.copyFile(
           executorInputPath('basic_fillet_cube_end.kcl'),
-          join(testDir, 'other.kcl')
+          path.join(testDir, 'other.kcl')
         )
       })
       const u = await getUtils(page)
