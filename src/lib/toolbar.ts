@@ -371,6 +371,32 @@ export const toolbarConfig: Record<ToolbarModeName, ToolbarMode> = {
               },
             ],
           },
+        ],
+      },
+      {
+        id: 'surface',
+        array: [
+          {
+            id: 'flip-surface',
+            onClick: () =>
+              commandBarActor.send({
+                type: 'Find and select command',
+                data: { name: 'Flip Surface', groupId: 'modeling' },
+              }),
+            icon: 'flipSurface',
+            status: 'available',
+            title: 'Flip Surface',
+            description:
+              'Flip the orientation of a surface, swapping which side is the front and which is the reverse.',
+            links: [
+              {
+                label: 'API docs',
+                url: withSiteBaseURL(
+                  '/docs/kcl-std/functions/std-solid-flipSurface'
+                ),
+              },
+            ],
+          },
           {
             id: 'boolean-split',
             onClick: () =>
@@ -380,14 +406,32 @@ export const toolbarConfig: Record<ToolbarModeName, ToolbarMode> = {
               }),
             icon: 'split',
             status: 'available',
-            title: 'Split',
-            description: 'Split a solid into multiple solids.',
+            title: 'Split Surfaces',
+            description: 'Split a solid into multiple surfaces.',
             links: [
               {
                 label: 'KCL docs',
                 url: withSiteBaseURL('/docs/kcl-std/functions/std-solid-split'),
               },
             ],
+          },
+          {
+            id: 'join-surfaces',
+            // TODO: enable with https://github.com/KittyCAD/modeling-app/issues/9080
+            onClick: () => {},
+            status: 'unavailable',
+            title: 'Join Surfaces',
+            description: 'Join surfaces together',
+            links: [],
+          },
+          {
+            id: 'delete-face',
+            // TODO: enable with https://github.com/KittyCAD/modeling-app/issues/9690
+            onClick: () => {},
+            status: 'unavailable',
+            title: 'Delete Face',
+            description: 'Deletes a face from a body, leaving an open surface.',
+            links: [],
           },
         ],
       },
