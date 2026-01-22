@@ -427,11 +427,14 @@ impl Context {
             .map_err(|e| JsValue::from_str(&format!("Could not create executor context: {e}")))?;
 
         // Re-execute using cache and transpile
-        let transpiled_code = kcl_lib::transpile_old_sketch_to_new_with_execution(&ctx, program, variable_name)
+        let result = kcl_lib::transpile_old_sketch_to_new_with_execution(&ctx, program, variable_name)
             .await
-            .map_err(|e| JsValue::from_str(&format!("Failed to transpile sketch: {:?}", e)))?;
+            .map_err(|e| JsValue::from_str(&format!("Failed to transpile sketch: {:?}", e)));
 
-        Ok(JsValue::from_str(&transpiled_code))
+        // Always close the context to avoid resource leaks
+        ctx.close().await;
+
+        result.map(|transpiled_code| JsValue::from_str(&transpiled_code))
     }
 
     /// Chain a segment to a previous segment by adding it and creating a coincident constraint.

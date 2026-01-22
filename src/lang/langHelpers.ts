@@ -259,13 +259,18 @@ export async function lintAst({
           }
 
           if (variableName) {
+            // Create a temporary context for transpilation
+            // Note: This creates a new context each time, but transpile_old_sketch
+            // uses the execution cache, so it should be fast
+            // The ExecutorContext inside transpile_old_sketch is closed automatically,
+            // but we still need to ensure the WASM Context reference is released
+            let ctx: Awaited<
+              ReturnType<typeof rustContext.createNewContext>
+            > | null = null
             try {
               const settings = await jsAppSettings(rustContext.settingsActor)
 
-              // Create a temporary context for transpilation
-              // Note: This creates a new context each time, but transpile_old_sketch
-              // uses the execution cache, so it should be fast
-              const ctx = await rustContext.createNewContext()
+              ctx = await rustContext.createNewContext()
 
               const transpiledCodeResult = await ctx.transpile_old_sketch(
                 JSON.stringify(ast),
@@ -309,6 +314,10 @@ export async function lintAst({
                 '[lintAst] Z0005 transpilation failed:',
                 transpileError
               )
+            } finally {
+              // Explicitly clear the context reference to help GC
+              // The ExecutorContext inside transpile_old_sketch is already closed by Rust code
+              ctx = null
             }
           }
         } catch (e) {
