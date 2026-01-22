@@ -666,6 +666,71 @@ export function createSettings() {
         },
       }),
     },
+    /**
+     * Settings for cloud plugins and AI Agent integration
+     */
+    plugins: {
+      /**
+       * Enable cloud plugin system
+       */
+      enableCloudPlugins: new Setting<boolean>({
+        defaultValue: false,
+        description: 'Enable loading plugins from cloud registry',
+        validate: (v) => typeof v === 'boolean',
+        commandConfig: {
+          inputType: 'boolean',
+        },
+      }),
+      /**
+       * Cloud plugin registry URL
+       */
+      cloudPluginRegistryUrl: new Setting<string>({
+        defaultValue: 'https://zoo.dev/api/plugins/registry',
+        description: 'URL for fetching available cloud plugins',
+        validate: (v) => typeof v === 'string' && v.length > 0,
+        commandConfig: {
+          inputType: 'string',
+          defaultValueFromContext: (context) =>
+            context.plugins.cloudPluginRegistryUrl.current,
+        },
+      }),
+      /**
+       * AI Agent API URL
+       */
+      aiAgentApiUrl: new Setting<string>({
+        defaultValue: 'https://zoo.dev/api/ai-agent',
+        description: 'URL for the cloud AI Agent API',
+        validate: (v) => typeof v === 'string' && v.length > 0,
+        commandConfig: {
+          inputType: 'string',
+          defaultValueFromContext: (context) =>
+            context.plugins.aiAgentApiUrl.current,
+        },
+      }),
+      /**
+       * AI Agent API timeout (milliseconds)
+       */
+      aiAgentTimeout: new Setting<number>({
+        defaultValue: 300000, // 5 minutes
+        description: 'Timeout for AI Agent tasks in milliseconds',
+        validate: (v) => typeof v === 'number' && v > 0 && v <= 600000,
+        commandConfig: {
+          inputType: 'options',
+          defaultValueFromContext: (context) =>
+            context.plugins.aiAgentTimeout.current,
+          options: () =>
+            [
+              60000, // 1 minute
+              120000, // 2 minutes
+              300000, // 5 minutes
+              600000, // 10 minutes
+            ].map((v) => ({
+              name: `${v / 60000} minute${v / 60000 > 1 ? 's' : ''}`,
+              value: v,
+            })),
+        },
+      }),
+    },
     /** Settings that affect the behavior of the entire app,
      *  beyond just modeling or navigating, for example
      *  NOTE: before using the project id for anything, check it isn't the

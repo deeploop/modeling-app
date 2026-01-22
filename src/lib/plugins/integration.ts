@@ -127,11 +127,27 @@ export async function sendModelToCloudAgent(
 }
 
 /**
+ * 插件系统设置接口
+ */
+export interface PluginSystemSettings {
+  /** 云端插件目录 URL */
+  cloudPluginRegistryUrl?: string
+  /** AI Agent API URL */
+  aiAgentApiUrl?: string
+  /** AI Agent 超时时间（毫秒） */
+  aiAgentTimeout?: number
+  /** 是否启用云端插件 */
+  enableCloudPlugins?: boolean
+}
+
+/**
  * 初始化插件系统
+ * @param scene Three.js 场景（可选）
+ * @param settings 插件系统设置（可选）
  */
 export async function initializePluginSystem(
   scene?: Scene,
-  cloudRegistryUrl?: string
+  settings?: PluginSystemSettings
 ): Promise<void> {
   console.log('Initializing plugin system...')
 
@@ -141,9 +157,18 @@ export async function initializePluginSystem(
   }
 
   // 设置云端插件目录 URL
-  if (cloudRegistryUrl) {
-    pluginManager.setCloudPluginRegistryUrl(cloudRegistryUrl)
-    cloudAgentClient.setApiUrl(cloudRegistryUrl.replace('/registry', ''))
+  if (settings?.cloudPluginRegistryUrl) {
+    pluginManager.setCloudPluginRegistryUrl(settings.cloudPluginRegistryUrl)
+  }
+
+  // 设置 AI Agent API URL
+  if (settings?.aiAgentApiUrl) {
+    cloudAgentClient.setApiUrl(settings.aiAgentApiUrl)
+  }
+
+  // 设置 AI Agent 超时
+  if (settings?.aiAgentTimeout) {
+    cloudAgentClient.setDefaultTimeout(settings.aiAgentTimeout)
   }
 
   // 加载本地插件（内置插件）
@@ -166,6 +191,27 @@ export async function initializePluginSystem(
   pluginManager.onPluginError.add(({ pluginId, error }) => {
     console.error(`Plugin error (${pluginId}):`, error)
   })
+
+  // 如果启用了云端插件，自动获取插件列表
+  if (settings?.enableCloudPlugins) {
+    try {
+      const cloudPlugins = await pluginManager.fetchCloudPlugins()
+      console.log(`Found ${cloudPlugins.length} cloud plugins`)
+
+      // 记录推荐的插件
+      const recommended = cloudPlugins.filter(
+        (p) => p.enabled && p.rating && p.rating >= 4.0
+      )
+      if (recommended.length > 0) {
+        console.log(
+          `Recommended plugins:`,
+          recommended.map((p) => p.name).join(', ')
+        )
+      }
+    } catch (error) {
+      console.warn('Failed to fetch cloud plugins:', error)
+    }
+  }
 
   console.log('Plugin system initialized')
 }
