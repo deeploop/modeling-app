@@ -45,13 +45,13 @@ anyhow = { workspace = true, features = ["backtrace"] }
 async-recursion = "1.1.1"
 async-trait = { workspace = true }
 base64 = "0.22.1"
-chrono = "0.4.42"
-clap = { version = "4.5.53", default-features = false, optional = true, features = [
+chrono = "0.4.43"
+clap = { version = "4.5.54", default-features = false, optional = true, features = [
   "std",
   "derive",
 ] }
 convert_case = "0.10.0"
-csscolorparser = "0.8.0"
+csscolorparser = "0.8.1"
 dashmap = { workspace = true }
 dhat = { version = "0.3", optional = true }
 fnv = "1.0.7"
@@ -110,7 +110,7 @@ ts-rs = { version = "11.1.0", features = [
   "serde-json-impl",
 ] }
 tynm = "0.2.0"
-url = { version = "2.5.7", features = ["serde"] }
+url = { version = "2.5.8", features = ["serde"] }
 uuid = { workspace = true, features = ["v4", "v5", "js", "serde"] }
 validator = { version = "0.20.0", features = ["derive"] }
 walkdir = "2.5.0"
