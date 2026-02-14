@@ -14,11 +14,11 @@ dhat-heap = ["kcl-lib/dhat-heap"]
 
 [dependencies]
 rayon = { workspace = true }
-typed-path = "0.12.0"
+typed-path = "0.12.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = { workspace = true }
-data-encoding = "2.9.0"
+data-encoding = "2.10.0"
 futures = "0.3.31"
 # Enable the feature in a transitive dependency.
 getrandom_2 = { package = "getrandom", version = "0.2", features = ["js"] }
@@ -50,7 +50,7 @@ features = [
 [dev-dependencies]
 anyhow.workspace = true
 pretty_assertions = "1.4.1"
-wasm-bindgen-test = "0.3.55"
+wasm-bindgen-test = "0.3.58"
 
 # Local development only. Placeholder to speed up development cycle
 #[package.metadata.wasm-pack.profile.release]
