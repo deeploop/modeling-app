@@ -23,20 +23,20 @@ jobs:
   prepare-wasm:
     runs-on: namespace-profile-ubuntu-8-cores
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           repository: kittycad/modeling-app # required for 'workflow_call'
 
       - id: filter
         name: Check for Rust changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         continue-on-error: true # this step fails when invoked as 'workflow_call'
         with:
           filters: |
             rust:
               - 'rust/**'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -47,7 +47,7 @@ jobs:
       - name: Download Wasm cache
         id: download-wasm
         if: ${{ github.event_name != 'schedule' && (steps.filter.outputs.rust || 'false') == 'false' }}
-        uses: dawidd6/action-download-artifact@v11
+        uses: dawidd6/action-download-artifact@v19
         continue-on-error: true
         with:
           github_token: ${{secrets.GITHUB_TOKEN}}
@@ -97,7 +97,7 @@ jobs:
         run: npm run build:wasm
 
       - name: Upload compiled wasm artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: prepared-wasm
           path: |
@@ -110,19 +110,19 @@ jobs:
     name: e2e:snapshots
 
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.MODELING_APP_GH_APP_ID }}
           private-key: ${{ secrets.MODELING_APP_GH_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           repository: kittycad/modeling-app # required for 'workflow_call'
           token: ${{ steps.app-token.outputs.token }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: prepared-wasm
           path: prepared-wasm
@@ -134,7 +134,7 @@ jobs:
           mkdir rust/kcl-wasm-lib/pkg
           cp prepared-wasm/kcl_wasm_lib* rust/kcl-wasm-lib/pkg
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -143,7 +143,7 @@ jobs:
         run: npm install
 
       - name: Download browser cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/ms-playwright/
@@ -153,7 +153,7 @@ jobs:
         run: npm run playwright install --with-deps
 
       - name: npm run test:snapshots
-        uses: nick-fields/retry@v3.0.2
+        uses: nick-fields/retry@v4.0.0
         with:
           shell: bash
           command: npm run test:snapshots
@@ -181,7 +181,7 @@ jobs:
           TARGET: web
 
       - name: Upload playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-snapshot-${{ github.sha }}
@@ -232,19 +232,19 @@ jobs:
       OS_NAME: ${{ contains(matrix.os, 'ubuntu') && 'ubuntu' || (contains(matrix.os, 'windows') && 'windows' || 'macos') }}
 
     steps:
-      - uses: actions/create-github-app-token@v2
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.MODELING_APP_GH_APP_ID }}
           private-key: ${{ secrets.MODELING_APP_GH_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           repository: kittycad/modeling-app # required for 'workflow_call'
           token: ${{ steps.app-token.outputs.token }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: prepared-wasm
           path: prepared-wasm
@@ -256,7 +256,7 @@ jobs:
           mkdir rust/kcl-wasm-lib/pkg
           cp prepared-wasm/kcl_wasm_lib* rust/kcl-wasm-lib/pkg
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -265,7 +265,7 @@ jobs:
         run: npm install
 
       - name: Download browser cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/ms-playwright/
@@ -282,7 +282,7 @@ jobs:
           OS_NAME: ${{ env.OS_NAME }}
 
       - name: npm run test:e2e:web
-        uses: nick-fields/retry@v3.0.2
+        uses: nick-fields/retry@v4.0.0
         with:
           shell: bash
           command: npm run test:e2e:web
@@ -298,7 +298,7 @@ jobs:
           TARGET: web
 
       - name: Upload playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && (success() || failure()) }}
         with:
           name: playwright-report-web-${{ env.OS_NAME }}-${{ matrix.shardIndex }}-${{ github.sha }}
@@ -356,11 +356,11 @@ jobs:
       OS_NAME: ${{ contains(matrix.os, 'ubuntu') && 'ubuntu' || (contains(matrix.os, 'windows') && 'windows' || 'macos') }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           repository: kittycad/modeling-app # required for 'workflow_call'
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: prepared-wasm
           path: prepared-wasm
@@ -372,7 +372,7 @@ jobs:
           mkdir rust/kcl-wasm-lib/pkg
           cp prepared-wasm/kcl_wasm_lib* rust/kcl-wasm-lib/pkg
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: ".nvmrc"
           cache: "npm"
@@ -382,7 +382,7 @@ jobs:
         run: npm install
 
       - name: Download browser cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/ms-playwright/
@@ -401,7 +401,7 @@ jobs:
       - name: Build app
         run: npm run tronb:vite:dev
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: ${{ !cancelled() && (success() || failure()) }}
         continue-on-error: true
         with:
@@ -411,7 +411,7 @@ jobs:
       - name: npm run test:e2e:desktop
         id: retry
         if: ${{ !cancelled() && steps.deps-install.outcome == 'success' }}
-        uses: nick-fields/retry@v3.0.2
+        uses: nick-fields/retry@v4.0.0
         with:
           shell: bash
           command: .github/ci-cd-scripts/playwright-electron.sh ${{matrix.shardIndex}} ${{matrix.shardTotal}} ${{ env.OS_NAME }}
@@ -428,7 +428,7 @@ jobs:
           TARGET: desktop
 
       - name: Upload test report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-desktop-${{ env.OS_NAME }}-${{ matrix.shardIndex }}-${{ github.sha }}
@@ -438,7 +438,7 @@ jobs:
           overwrite: true
 
       - name: Upload playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-desktop-${{ env.OS_NAME }}-${{ matrix.shardIndex }}-${{ github.sha }}
