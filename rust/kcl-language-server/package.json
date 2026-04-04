@@ -116,7 +116,7 @@
     "@tsconfig/strictest": "^2.0.6",
     "@types/glob": "^9.0.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^22.14.1",
+    "@types/node": "^25.5.0",
     "@types/vscode": "^1.97.0",
     "@typescript-eslint/eslint-plugin": "^8.27.0",
     "@typescript-eslint/parser": "^8.27.0",
@@ -124,9 +124,9 @@
     "@vscode/vsce": "^3.3.2",
     "cross-env": "^10.1.0",
     "esbuild": "^0.27.0",
-    "glob": "^11.0.3",
+    "glob": "^13.0.6",
     "mocha": "^11.1.0",
-    "typescript": "^5.8.3"
+    "typescript": "^6.0.2"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
